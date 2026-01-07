@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retro - Team Retrospectives</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container home">
+    <header>
+      <h1>The Tool For<br><span>Team Retros.</span></h1>
+      <p class="tagline">Run effective retrospectives with real-time collaboration, anonymous feedback, and simple voting.</p>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="btn-group">
+          <button id="startRetro" class="btn btn-primary btn-large">
+            Get Started
+          </button>
+        </div>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">+</div>
+          <h3>Anonymous</h3>
+          <p>Team members share honest feedback without attribution</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&harr;</div>
+          <h3>Real-time</h3>
+          <p>See updates instantly as your team collaborates together</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">&check;</div>
+          <h3>Simple Voting</h3>
+          <p>Prioritize what matters most with 3 votes per person</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <p>Built with Cloudflare Workers</p>
+    </footer>
+  </div>
+
+  <!-- Create Retro Modal -->
+  <div id="createModal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Create Retro</h2>
+      <p>Give your retro a name</p>
+      <input type="text" id="retroNameInput" placeholder="e.g., Sprint 42 Retro" maxlength="100" autofocus>
+      <button id="createBtn" class="btn btn-primary">Create</button>
+    </div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startRetro');
+    const createModal = document.getElementById('createModal');
+    const retroNameInput = document.getElementById('retroNameInput');
+    const createBtn = document.getElementById('createBtn');
+
+    startBtn.addEventListener('click', () => {
+      createModal.classList.remove('hidden');
+      retroNameInput.focus();
+    });
+
+    createBtn.addEventListener('click', createRetro);
+    retroNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') createRetro();
+    });
+
+    async function createRetro() {
+      const name = retroNameInput.value.trim() || 'Untitled Retro';
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+
+      try {
+        const response = await fetch('/api/retros', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        window.location.href = `/retro/${data.id}`;
+      } catch (error) {
+        alert('Failed to create retro. Please try again.');
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create';
+      }
+    }
+  </script>
+</body>
+</html>

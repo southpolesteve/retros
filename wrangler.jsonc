@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "retros",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-06",
+
+  // Serve static assets from /public
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+
+  // D1 Database binding
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "retros-db",
+      "database_id": "local-retros-db"
+    }
+  ],
+
+  // Durable Object bindings
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RETRO_ROOM",
+        "class_name": "RetroRoom"
+      }
+    ]
+  },
+
+  // Migrations for Durable Objects with SQLite storage
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RetroRoom"]
+    }
+  ]
+}

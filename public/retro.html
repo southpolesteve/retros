@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retro Session</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container retro-page">
+    <!-- Join Modal -->
+    <div id="joinModal" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="joinModalTitle">Join Retro</h2>
+        <p id="joinModalSubtitle">Enter your name to join the session</p>
+        <div id="retroNameDisplay" class="retro-name-display hidden"></div>
+        <input type="text" id="retroNameInput" placeholder="Retro name (e.g., Sprint 42 Retro)" maxlength="100" class="hidden">
+        <input type="text" id="nameInput" placeholder="Your name" maxlength="30">
+        <button id="joinBtn" class="btn btn-primary">Join</button>
+      </div>
+    </div>
+
+    <!-- Main Content (hidden until joined) -->
+    <div id="mainContent" class="hidden">
+      <header class="retro-header">
+        <div class="header-left">
+          <h1 id="retroName" class="retro-name">Retro</h1>
+          <span id="phaseLabel" class="phase-badge">Waiting</span>
+        </div>
+        <div class="header-right">
+          <div id="participants" class="participants"></div>
+          <div id="votesRemaining" class="votes-remaining hidden">
+            Votes: <span id="votesCount">3</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Facilitator Controls -->
+      <div id="facilitatorControls" class="facilitator-controls hidden">
+        <button id="nextPhaseBtn" class="btn btn-secondary">Start Adding Items</button>
+        <button id="deleteRetroBtn" class="btn btn-danger">Delete Retro</button>
+      </div>
+
+      <!-- Columns -->
+      <div id="columns" class="columns">
+        <div class="column" data-column="start">
+          <h2 class="column-header column-start">Start</h2>
+          <p class="column-desc">What should we start doing?</p>
+          <div id="startItems" class="items"></div>
+          <div class="add-item hidden" data-phase="adding">
+            <textarea id="startInput" placeholder="Add an item..." rows="2"></textarea>
+            <button class="btn btn-small" onclick="addItem('start')">Add</button>
+          </div>
+        </div>
+
+        <div class="column" data-column="stop">
+          <h2 class="column-header column-stop">Stop</h2>
+          <p class="column-desc">What should we stop doing?</p>
+          <div id="stopItems" class="items"></div>
+          <div class="add-item hidden" data-phase="adding">
+            <textarea id="stopInput" placeholder="Add an item..." rows="2"></textarea>
+            <button class="btn btn-small" onclick="addItem('stop')">Add</button>
+          </div>
+        </div>
+
+        <div class="column" data-column="continue">
+          <h2 class="column-header column-continue">Continue</h2>
+          <p class="column-desc">What should we continue doing?</p>
+          <div id="continueItems" class="items"></div>
+          <div class="add-item hidden" data-phase="adding">
+            <textarea id="continueInput" placeholder="Add an item..." rows="2"></textarea>
+            <button class="btn btn-small" onclick="addItem('continue')">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Waiting Phase Message -->
+      <div id="waitingMessage" class="phase-message">
+        <p>Waiting for facilitator to start the session...</p>
+        <p class="share-link">Share this link with your team: <code id="shareLink"></code></p>
+      </div>
+
+      <!-- Voting Phase Message -->
+      <div id="votingMessage" class="phase-message hidden">
+        <p>Vote on the items you think are most important. You have <strong>3 votes</strong> total.</p>
+      </div>
+
+      <!-- Discussion Phase Message -->
+      <div id="discussionMessage" class="phase-message hidden">
+        <p>Items are now sorted by votes. Discuss as a team!</p>
+      </div>
+
+      <!-- Complete Phase Message -->
+      <div id="completeMessage" class="phase-message hidden">
+        <p>This retro is complete. Thanks for participating!</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
