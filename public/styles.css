@@ -29,7 +29,9 @@
 }
 
 /* Reset */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -41,7 +43,9 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
@@ -163,7 +167,7 @@ p {
   border-color: var(--accent-orange);
 }
 
-/* Hidden utility */
+/* Hidden utility - !important needed to override modal display:flex */
 .hidden {
   display: none !important;
 }
@@ -175,7 +179,7 @@ p {
 
 .frame::before,
 .frame::after {
-  content: '';
+  content: "";
   position: absolute;
   width: 60px;
   height: 60px;
@@ -208,7 +212,7 @@ p {
 
 .home::before,
 .home::after {
-  content: '';
+  content: "";
   position: fixed;
   width: 80px;
   height: 80px;
@@ -613,7 +617,9 @@ p {
   padding: 1rem;
   border-radius: var(--radius);
   border: 1px solid var(--border-color);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .item:hover {
@@ -650,7 +656,7 @@ p {
 }
 
 .item-votes::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -728,7 +734,7 @@ p {
   color: var(--accent-orange);
   word-break: break-all;
   border: 1px solid var(--border-color);
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-family: "SF Mono", Monaco, "Courier New", monospace;
 }
 
 /* Responsive adjustments */
@@ -736,30 +742,30 @@ p {
   .home h1 {
     font-size: 2.5rem;
   }
-  
+
   .home::before,
   .home::after {
     width: 40px;
     height: 40px;
     top: 20px;
   }
-  
+
   .home::before {
     left: 20px;
   }
-  
+
   .home::after {
     right: 20px;
   }
-  
+
   .container {
     padding: 1rem;
   }
-  
+
   .retro-header {
     padding: 1rem;
   }
-  
+
   .facilitator-controls {
     flex-direction: column;
     align-items: stretch;

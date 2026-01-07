@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Real-time Collaboration', () => {
   test('participants see each other join in real-time', async ({ browser }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // First user creates and joins
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -12,7 +12,7 @@ test.describe('Real-time Collaboration', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Alice');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -29,7 +29,7 @@ test.describe('Real-time Collaboration', () => {
     // Both should see 2 participants
     await expect(page1.locator('.participant')).toHaveCount(2);
     await expect(page2.locator('.participant')).toHaveCount(2);
-    
+
     // First user should see Bob joined
     await expect(page1.locator('.participant')).toContainText(['Alice', 'Bob']);
 
@@ -37,10 +37,12 @@ test.describe('Real-time Collaboration', () => {
     await context2.close();
   });
 
-  test('items added are visible to all participants in real-time', async ({ browser }) => {
+  test('items added are visible to all participants in real-time', async ({
+    browser,
+  }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // Facilitator creates retro
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -48,7 +50,7 @@ test.describe('Real-time Collaboration', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Facilitator');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -87,19 +89,29 @@ test.describe('Real-time Collaboration', () => {
     await expect(page1.locator('#phaseLabel')).toHaveText('Voting');
 
     // Both should see all items revealed
-    await expect(page1.locator('#startItems .item')).toContainText('Item from participant');
-    await expect(page2.locator('#startItems .item')).toContainText('Item from participant');
-    await expect(page1.locator('#stopItems .item')).toContainText('Item from facilitator');
-    await expect(page2.locator('#stopItems .item')).toContainText('Item from facilitator');
+    await expect(page1.locator('#startItems .item')).toContainText(
+      'Item from participant',
+    );
+    await expect(page2.locator('#startItems .item')).toContainText(
+      'Item from participant',
+    );
+    await expect(page1.locator('#stopItems .item')).toContainText(
+      'Item from facilitator',
+    );
+    await expect(page2.locator('#stopItems .item')).toContainText(
+      'Item from facilitator',
+    );
 
     await context1.close();
     await context2.close();
   });
 
-  test('retro name updates are visible to all participants', async ({ browser }) => {
+  test('retro name updates are visible to all participants', async ({
+    browser,
+  }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // Facilitator creates retro
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -107,7 +119,7 @@ test.describe('Real-time Collaboration', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Facilitator');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -134,10 +146,12 @@ test.describe('Real-time Collaboration', () => {
     await context2.close();
   });
 
-  test('votes update in real-time during Discussion phase', async ({ browser }) => {
+  test('votes update in real-time during Discussion phase', async ({
+    browser,
+  }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // Facilitator creates retro
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -145,7 +159,7 @@ test.describe('Real-time Collaboration', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Facilitator');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -186,7 +200,7 @@ test.describe('Real-time Collaboration', () => {
   test('delete retro kicks all participants', async ({ browser }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // Facilitator creates retro
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -194,7 +208,7 @@ test.describe('Real-time Collaboration', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Facilitator');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -208,8 +222,8 @@ test.describe('Real-time Collaboration', () => {
     await expect(page2.locator('#mainContent')).toBeVisible();
 
     // Set up dialog handlers for both pages
-    page1.on('dialog', dialog => dialog.accept());
-    page2.on('dialog', dialog => dialog.accept());
+    page1.on('dialog', (dialog) => dialog.accept());
+    page2.on('dialog', (dialog) => dialog.accept());
 
     // Facilitator deletes retro
     await page1.click('#deleteRetroBtn');

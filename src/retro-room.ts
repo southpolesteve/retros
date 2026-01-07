@@ -1,12 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import type {
-  Env,
-  Phase,
-  Column,
-  Retro,
-  Participant,
-  Item,
   ClientMessage,
+  Column,
+  Env,
+  Item,
+  Participant,
+  Phase,
+  Retro,
   ServerMessage,
   WebSocketAttachment,
 } from './types';
@@ -19,10 +19,6 @@ function generateId(): string {
 
 export class RetroRoom extends DurableObject<Env> {
   private retroId: string = '';
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-  }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -41,7 +37,10 @@ export class RetroRoom extends DurableObject<Env> {
     return new Response('Expected WebSocket', { status: 400 });
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ): Promise<void> {
     if (typeof message !== 'string') return;
 
     try {
@@ -56,15 +55,21 @@ export class RetroRoom extends DurableObject<Env> {
   async webSocketClose(ws: WebSocket): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (attachment) {
-      this.broadcast({ type: 'participant-left', visitorId: attachment.visitorId }, ws);
+      this.broadcast(
+        { type: 'participant-left', visitorId: attachment.visitorId },
+        ws,
+      );
     }
   }
 
-  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+  async webSocketError(_ws: WebSocket, error: unknown): Promise<void> {
     console.error('WebSocket error:', error);
   }
 
-  private async handleMessage(ws: WebSocket, data: ClientMessage): Promise<void> {
+  private async handleMessage(
+    ws: WebSocket,
+    data: ClientMessage,
+  ): Promise<void> {
     switch (data.type) {
       case 'join':
         await this.handleJoin(ws, data.name, data.retroName);
@@ -90,17 +95,19 @@ export class RetroRoom extends DurableObject<Env> {
     }
   }
 
-  private async handleJoin(ws: WebSocket, name: string, retroName?: string): Promise<void> {
+  private async handleJoin(
+    ws: WebSocket,
+    name: string,
+    retroName?: string,
+  ): Promise<void> {
     let retro = await this.getRetro();
     const visitorId = generateId();
-    
+
     // Determine if this person should be facilitator:
     // - If retro doesn't exist (shouldn't happen with new flow, but fallback)
     // - If retro exists but has no facilitator yet (first joiner after creation)
     const needsFacilitator = !retro || !retro.facilitatorId;
     const isFacilitator = needsFacilitator;
-    
-
 
     if (!retro) {
       // Fallback: create retro if it doesn't exist (old flow or direct URL access)
@@ -112,14 +119,24 @@ export class RetroRoom extends DurableObject<Env> {
         phase: 'waiting',
       };
       await this.env.DB.prepare(
-        'INSERT INTO retros (id, name, created_at, facilitator_id, phase) VALUES (?, ?, ?, ?, ?)'
-      ).bind(retro.id, retro.name, retro.createdAt, retro.facilitatorId, retro.phase).run();
+        'INSERT INTO retros (id, name, created_at, facilitator_id, phase) VALUES (?, ?, ?, ?, ?)',
+      )
+        .bind(
+          retro.id,
+          retro.name,
+          retro.createdAt,
+          retro.facilitatorId,
+          retro.phase,
+        )
+        .run();
     } else if (!retro.facilitatorId) {
       // Retro exists but no facilitator yet - set this person as facilitator
       retro.facilitatorId = visitorId;
       await this.env.DB.prepare(
-        'UPDATE retros SET facilitator_id = ? WHERE id = ?'
-      ).bind(visitorId, this.retroId).run();
+        'UPDATE retros SET facilitator_id = ? WHERE id = ?',
+      )
+        .bind(visitorId, this.retroId)
+        .run();
     }
 
     const attachment: WebSocketAttachment = {
@@ -129,31 +146,41 @@ export class RetroRoom extends DurableObject<Env> {
     };
     ws.serializeAttachment(attachment);
 
+    // At this point, retro is guaranteed to be defined
+    const currentRetro = retro as Retro;
+
     const participants = this.getParticipants();
-    const items = await this.getItems(visitorId, retro!.phase);
+    const items = await this.getItems(visitorId, currentRetro.phase);
     const votesRemaining = await this.getVotesRemaining(visitorId);
 
     this.sendTo(ws, {
       type: 'state',
-      retro: retro!,
+      retro: currentRetro,
       participants,
       items,
       visitorId,
       votesRemaining,
     });
 
-    this.broadcast({
-      type: 'participant-joined',
-      participant: {
-        id: visitorId,
-        name,
-        isFacilitator,
-        isConnected: true,
+    this.broadcast(
+      {
+        type: 'participant-joined',
+        participant: {
+          id: visitorId,
+          name,
+          isFacilitator,
+          isConnected: true,
+        },
       },
-    }, ws);
+      ws,
+    );
   }
 
-  private async handleAddItem(ws: WebSocket, column: Column, text: string): Promise<void> {
+  private async handleAddItem(
+    ws: WebSocket,
+    column: Column,
+    text: string,
+  ): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (!attachment) {
       this.sendTo(ws, { type: 'error', message: 'Not joined' });
@@ -162,7 +189,10 @@ export class RetroRoom extends DurableObject<Env> {
 
     const retro = await this.getRetro();
     if (!retro || retro.phase !== 'adding') {
-      this.sendTo(ws, { type: 'error', message: 'Cannot add items in current phase' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot add items in current phase',
+      });
       return;
     }
 
@@ -177,8 +207,10 @@ export class RetroRoom extends DurableObject<Env> {
     };
 
     await this.env.DB.prepare(
-      'INSERT INTO items (id, retro_id, column_type, text, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(item.id, item.retroId, item.column, item.text, item.createdAt).run();
+      'INSERT INTO items (id, retro_id, column_type, text, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(item.id, item.retroId, item.column, item.text, item.createdAt)
+      .run();
 
     this.broadcast({ type: 'item-added', item });
   }
@@ -192,7 +224,10 @@ export class RetroRoom extends DurableObject<Env> {
 
     const retro = await this.getRetro();
     if (!retro || retro.phase !== 'voting') {
-      this.sendTo(ws, { type: 'error', message: 'Cannot vote in current phase' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot vote in current phase',
+      });
       return;
     }
 
@@ -204,8 +239,10 @@ export class RetroRoom extends DurableObject<Env> {
 
     const voteId = generateId();
     await this.env.DB.prepare(
-      'INSERT INTO votes (id, item_id, participant_id, created_at) VALUES (?, ?, ?, ?)'
-    ).bind(voteId, itemId, attachment.visitorId, Date.now()).run();
+      'INSERT INTO votes (id, item_id, participant_id, created_at) VALUES (?, ?, ?, ?)',
+    )
+      .bind(voteId, itemId, attachment.visitorId, Date.now())
+      .run();
 
     const voteCount = await this.getVoteCount(itemId);
     const votesRemaining = MAX_VOTES - votesUsed - 1;
@@ -228,15 +265,20 @@ export class RetroRoom extends DurableObject<Env> {
 
     const retro = await this.getRetro();
     if (!retro || retro.phase !== 'voting') {
-      this.sendTo(ws, { type: 'error', message: 'Cannot unvote in current phase' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot unvote in current phase',
+      });
       return;
     }
 
     await this.env.DB.prepare(
       `DELETE FROM votes WHERE id IN (
         SELECT id FROM votes WHERE item_id = ? AND participant_id = ? LIMIT 1
-      )`
-    ).bind(itemId, attachment.visitorId).run();
+      )`,
+    )
+      .bind(itemId, attachment.visitorId)
+      .run();
 
     const voteCount = await this.getVoteCount(itemId);
     const myVoteCount = await this.getMyVoteCount(itemId, attachment.visitorId);
@@ -254,7 +296,10 @@ export class RetroRoom extends DurableObject<Env> {
   private async handleSetPhase(ws: WebSocket, phase: Phase): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (!attachment || !attachment.isFacilitator) {
-      this.sendTo(ws, { type: 'error', message: 'Only facilitator can change phase' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can change phase',
+      });
       return;
     }
 
@@ -264,7 +309,13 @@ export class RetroRoom extends DurableObject<Env> {
       return;
     }
 
-    const phaseOrder: Phase[] = ['waiting', 'adding', 'voting', 'discussion', 'complete'];
+    const phaseOrder: Phase[] = [
+      'waiting',
+      'adding',
+      'voting',
+      'discussion',
+      'complete',
+    ];
     const currentIndex = phaseOrder.indexOf(retro.phase);
     const targetIndex = phaseOrder.indexOf(phase);
 
@@ -273,9 +324,9 @@ export class RetroRoom extends DurableObject<Env> {
       return;
     }
 
-    await this.env.DB.prepare(
-      'UPDATE retros SET phase = ? WHERE id = ?'
-    ).bind(phase, this.retroId).run();
+    await this.env.DB.prepare('UPDATE retros SET phase = ? WHERE id = ?')
+      .bind(phase, this.retroId)
+      .run();
 
     if (phase === 'voting' || phase === 'discussion' || phase === 'complete') {
       const items = await this.getItemsWithVotes();
@@ -285,17 +336,23 @@ export class RetroRoom extends DurableObject<Env> {
     }
   }
 
-  private async handleUpdateRetroName(ws: WebSocket, name: string): Promise<void> {
+  private async handleUpdateRetroName(
+    ws: WebSocket,
+    name: string,
+  ): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (!attachment || !attachment.isFacilitator) {
-      this.sendTo(ws, { type: 'error', message: 'Only facilitator can rename retro' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can rename retro',
+      });
       return;
     }
 
     const trimmedName = name.trim() || 'Untitled Retro';
-    await this.env.DB.prepare(
-      'UPDATE retros SET name = ? WHERE id = ?'
-    ).bind(trimmedName, this.retroId).run();
+    await this.env.DB.prepare('UPDATE retros SET name = ? WHERE id = ?')
+      .bind(trimmedName, this.retroId)
+      .run();
 
     this.broadcast({ type: 'retro-name-updated', name: trimmedName });
   }
@@ -303,13 +360,24 @@ export class RetroRoom extends DurableObject<Env> {
   private async handleDeleteRetro(ws: WebSocket): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (!attachment || !attachment.isFacilitator) {
-      this.sendTo(ws, { type: 'error', message: 'Only facilitator can delete retro' });
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can delete retro',
+      });
       return;
     }
 
-    await this.env.DB.prepare('DELETE FROM votes WHERE item_id IN (SELECT id FROM items WHERE retro_id = ?)').bind(this.retroId).run();
-    await this.env.DB.prepare('DELETE FROM items WHERE retro_id = ?').bind(this.retroId).run();
-    await this.env.DB.prepare('DELETE FROM retros WHERE id = ?').bind(this.retroId).run();
+    await this.env.DB.prepare(
+      'DELETE FROM votes WHERE item_id IN (SELECT id FROM items WHERE retro_id = ?)',
+    )
+      .bind(this.retroId)
+      .run();
+    await this.env.DB.prepare('DELETE FROM items WHERE retro_id = ?')
+      .bind(this.retroId)
+      .run();
+    await this.env.DB.prepare('DELETE FROM retros WHERE id = ?')
+      .bind(this.retroId)
+      .run();
 
     this.broadcast({ type: 'retro-deleted' });
 
@@ -320,8 +388,16 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getRetro(): Promise<Retro | null> {
     const result = await this.env.DB.prepare(
-      'SELECT id, name, created_at, facilitator_id, phase FROM retros WHERE id = ?'
-    ).bind(this.retroId).first<{ id: string; name: string; created_at: number; facilitator_id: string; phase: Phase }>();
+      'SELECT id, name, created_at, facilitator_id, phase FROM retros WHERE id = ?',
+    )
+      .bind(this.retroId)
+      .first<{
+        id: string;
+        name: string;
+        created_at: number;
+        facilitator_id: string;
+        phase: Phase;
+      }>();
 
     if (!result) return null;
 
@@ -337,7 +413,8 @@ export class RetroRoom extends DurableObject<Env> {
   private getParticipants(): Participant[] {
     const participants: Participant[] = [];
     for (const socket of this.ctx.getWebSockets()) {
-      const attachment = socket.deserializeAttachment() as WebSocketAttachment | null;
+      const attachment =
+        socket.deserializeAttachment() as WebSocketAttachment | null;
       if (attachment) {
         participants.push({
           id: attachment.visitorId,
@@ -352,12 +429,21 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getItems(visitorId: string, phase: Phase): Promise<Item[]> {
     const results = await this.env.DB.prepare(
-      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC'
-    ).bind(this.retroId).all<{ id: string; retro_id: string; column_type: Column; text: string; created_at: number }>();
+      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC',
+    )
+      .bind(this.retroId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        text: string;
+        created_at: number;
+      }>();
 
     const items: Item[] = [];
     for (const row of results.results || []) {
-      const voteCount = phase === 'voting' ? 0 : await this.getVoteCount(row.id);
+      const voteCount =
+        phase === 'voting' ? 0 : await this.getVoteCount(row.id);
       const myVoteCount = await this.getMyVoteCount(row.id, visitorId);
 
       items.push({
@@ -376,8 +462,16 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getItemsWithVotes(): Promise<Item[]> {
     const results = await this.env.DB.prepare(
-      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC'
-    ).bind(this.retroId).all<{ id: string; retro_id: string; column_type: Column; text: string; created_at: number }>();
+      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC',
+    )
+      .bind(this.retroId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        text: string;
+        created_at: number;
+      }>();
 
     const items: Item[] = [];
     for (const row of results.results || []) {
@@ -400,15 +494,22 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getVoteCount(itemId: string): Promise<number> {
     const result = await this.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM votes WHERE item_id = ?'
-    ).bind(itemId).first<{ count: number }>();
+      'SELECT COUNT(*) as count FROM votes WHERE item_id = ?',
+    )
+      .bind(itemId)
+      .first<{ count: number }>();
     return result?.count || 0;
   }
 
-  private async getMyVoteCount(itemId: string, visitorId: string): Promise<number> {
+  private async getMyVoteCount(
+    itemId: string,
+    visitorId: string,
+  ): Promise<number> {
     const result = await this.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM votes WHERE item_id = ? AND participant_id = ?'
-    ).bind(itemId, visitorId).first<{ count: number }>();
+      'SELECT COUNT(*) as count FROM votes WHERE item_id = ? AND participant_id = ?',
+    )
+      .bind(itemId, visitorId)
+      .first<{ count: number }>();
     return result?.count || 0;
   }
 
@@ -416,8 +517,10 @@ export class RetroRoom extends DurableObject<Env> {
     const result = await this.env.DB.prepare(
       `SELECT COUNT(*) as count FROM votes v
        JOIN items i ON v.item_id = i.id
-       WHERE v.participant_id = ? AND i.retro_id = ?`
-    ).bind(visitorId, this.retroId).first<{ count: number }>();
+       WHERE v.participant_id = ? AND i.retro_id = ?`,
+    )
+      .bind(visitorId, this.retroId)
+      .first<{ count: number }>();
     return result?.count || 0;
   }
 
@@ -433,7 +536,10 @@ export class RetroRoom extends DurableObject<Env> {
   private broadcast(message: ServerMessage, exclude?: WebSocket): void {
     const data = JSON.stringify(message);
     for (const socket of this.ctx.getWebSockets()) {
-      if (socket !== exclude && socket.readyState === WebSocket.READY_STATE_OPEN) {
+      if (
+        socket !== exclude &&
+        socket.readyState === WebSocket.READY_STATE_OPEN
+      ) {
         socket.send(data);
       }
     }

@@ -85,7 +85,7 @@
         });
         const data = await response.json();
         window.location.href = `/retro/${data.id}`;
-      } catch (error) {
+      } catch (_error) {
         alert('Failed to create retro. Please try again.');
         createBtn.disabled = false;
         createBtn.textContent = 'Create';

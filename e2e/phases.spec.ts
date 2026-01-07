@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Phase Transitions', () => {
   test.beforeEach(async ({ page }) => {
@@ -18,21 +18,25 @@ test.describe('Phase Transitions', () => {
   test('facilitator can progress through all phases', async ({ page }) => {
     // Should start in Waiting phase
     await expect(page.locator('#phaseLabel')).toHaveText('Waiting');
-    await expect(page.locator('#nextPhaseBtn')).toHaveText('Start Adding Items');
+    await expect(page.locator('#nextPhaseBtn')).toHaveText(
+      'Start Adding Items',
+    );
 
     // Advance to Adding
     await page.click('#nextPhaseBtn');
     await expect(page.locator('#phaseLabel')).toHaveText('Adding');
     await expect(page.locator('#nextPhaseBtn')).toHaveText('Start Voting');
-    
+
     // Add item inputs should be visible
     await expect(page.locator('.add-item').first()).toBeVisible();
 
     // Advance to Voting
     await page.click('#nextPhaseBtn');
     await expect(page.locator('#phaseLabel')).toHaveText('Voting');
-    await expect(page.locator('#nextPhaseBtn')).toHaveText('End Voting & Discuss');
-    
+    await expect(page.locator('#nextPhaseBtn')).toHaveText(
+      'End Voting & Discuss',
+    );
+
     // Add item inputs should be hidden
     await expect(page.locator('.add-item').first()).toBeHidden();
 
@@ -44,7 +48,7 @@ test.describe('Phase Transitions', () => {
     // Advance to Complete
     await page.click('#nextPhaseBtn');
     await expect(page.locator('#phaseLabel')).toHaveText('Complete');
-    
+
     // Next phase button should be hidden in Complete
     await expect(page.locator('#nextPhaseBtn')).toBeHidden();
   });
@@ -91,10 +95,12 @@ test.describe('Phase Transitions', () => {
     // Advance to Voting - add-item should be hidden again
     await page.click('#nextPhaseBtn');
     await expect(page.locator('.add-item').first()).toBeHidden();
-    
+
     // Item should now be visible
     await expect(page.locator('#startItems .item')).toBeVisible();
-    await expect(page.locator('#startItems .item')).toContainText('Test item for start column');
+    await expect(page.locator('#startItems .item')).toContainText(
+      'Test item for start column',
+    );
   });
 
   test('voting only works in Voting phase', async ({ page }) => {
@@ -127,7 +133,7 @@ test.describe('Phase Transitions', () => {
   test('participant cannot change phases', async ({ browser }) => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
-    
+
     // Facilitator creates retro
     await page1.goto('/');
     await page1.click('#startRetro');
@@ -135,7 +141,7 @@ test.describe('Phase Transitions', () => {
     await page1.click('#createBtn');
     await page1.waitForURL(/\/retro\/[a-z0-9]+$/);
     const retroUrl = page1.url();
-    
+
     await page1.fill('#nameInput', 'Facilitator');
     await page1.click('#joinBtn');
     await expect(page1.locator('#mainContent')).toBeVisible();
@@ -154,7 +160,7 @@ test.describe('Phase Transitions', () => {
 
     // Facilitator advances phase
     await page1.click('#nextPhaseBtn');
-    
+
     // Both should see Adding phase
     await expect(page1.locator('#phaseLabel')).toHaveText('Adding');
     await expect(page2.locator('#phaseLabel')).toHaveText('Adding');

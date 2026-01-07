@@ -14,21 +14,29 @@ function generateRetroId(): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    _ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
     // API: Create new retro
     if (path === '/api/retros' && request.method === 'POST') {
       const retroId = generateRetroId();
-      const body = await request.json().catch(() => ({})) as { name?: string };
+      const body = (await request.json().catch(() => ({}))) as {
+        name?: string;
+      };
       const retroName = body.name?.trim() || 'Untitled Retro';
-      
+
       // Create the retro in D1 immediately
       await env.DB.prepare(
-        'INSERT INTO retros (id, name, created_at, facilitator_id, phase) VALUES (?, ?, ?, ?, ?)'
-      ).bind(retroId, retroName, Date.now(), '', 'waiting').run();
-      
+        'INSERT INTO retros (id, name, created_at, facilitator_id, phase) VALUES (?, ?, ?, ?, ?)',
+      )
+        .bind(retroId, retroName, Date.now(), '', 'waiting')
+        .run();
+
       return Response.json({ id: retroId, name: retroName }, { status: 201 });
     }
 
@@ -36,9 +44,11 @@ export default {
     if (path.match(/^\/api\/retro\/[^/]+$/) && request.method === 'GET') {
       const retroId = path.split('/')[3];
       const result = await env.DB.prepare(
-        'SELECT id, name FROM retros WHERE id = ?'
-      ).bind(retroId).first<{ id: string; name: string }>();
-      
+        'SELECT id, name FROM retros WHERE id = ?',
+      )
+        .bind(retroId)
+        .first<{ id: string; name: string }>();
+
       if (result) {
         return Response.json({ exists: true, name: result.name });
       } else {
@@ -49,7 +59,7 @@ export default {
     // WebSocket: Connect to retro room
     if (path.startsWith('/api/retro/') && path.endsWith('/ws')) {
       const retroId = path.split('/')[3];
-      
+
       // Validate WebSocket upgrade
       const upgradeHeader = request.headers.get('Upgrade');
       if (upgradeHeader !== 'websocket') {

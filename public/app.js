@@ -1,6 +1,6 @@
 // State
 let ws = null;
-let state = {
+const state = {
   visitorId: null,
   visitorName: null,
   retro: null,
@@ -61,7 +61,7 @@ async function init() {
 
   // Check if retro already exists
   const retroInfo = await checkRetroExists();
-  
+
   if (retroInfo.exists) {
     // Existing retro - show its name, don't show name input
     joinModalTitle.textContent = retroInfo.name;
@@ -71,7 +71,8 @@ async function init() {
   } else {
     // New retro - show input for retro name
     joinModalTitle.textContent = 'Create Retro';
-    joinModalSubtitle.textContent = 'Name your retro and enter your name to start';
+    joinModalSubtitle.textContent =
+      'Name your retro and enter your name to start';
     retroNameInput.classList.remove('hidden');
     retroNameInput.focus();
   }
@@ -83,7 +84,7 @@ async function checkRetroExists() {
   try {
     const response = await fetch(`/api/retro/${retroId}`);
     return await response.json();
-  } catch (e) {
+  } catch (_e) {
     return { exists: false };
   }
 }
@@ -94,20 +95,20 @@ function getSavedSession() {
     if (data) {
       return JSON.parse(data);
     }
-  } catch (e) {}
+  } catch (_e) {}
   return null;
 }
 
 function saveSession(visitorName) {
   try {
     localStorage.setItem(storageKey, JSON.stringify({ visitorName }));
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 function clearSession() {
   try {
     localStorage.removeItem(storageKey);
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 function handleJoin() {
@@ -116,7 +117,9 @@ function handleJoin() {
     nameInput.focus();
     return;
   }
-  const retroName = retroNameInput.classList.contains('hidden') ? null : retroNameInput.value.trim();
+  const retroName = retroNameInput.classList.contains('hidden')
+    ? null
+    : retroNameInput.value.trim();
   connect(name, retroName);
 }
 
@@ -190,7 +193,7 @@ function handleState(message) {
   state.isFacilitator = message.retro.facilitatorId === message.visitorId;
 
   // Find my name from participants
-  const me = state.participants.find(p => p.id === state.visitorId);
+  const me = state.participants.find((p) => p.id === state.visitorId);
   if (me) {
     state.visitorName = me.name;
     // Save session for reconnect on refresh
@@ -210,7 +213,7 @@ function handleState(message) {
 }
 
 function handleParticipantJoined(participant) {
-  const existing = state.participants.find(p => p.id === participant.id);
+  const existing = state.participants.find((p) => p.id === participant.id);
   if (existing) {
     existing.isConnected = true;
     existing.name = participant.name;
@@ -221,7 +224,7 @@ function handleParticipantJoined(participant) {
 }
 
 function handleParticipantLeft(visitorId) {
-  const participant = state.participants.find(p => p.id === visitorId);
+  const participant = state.participants.find((p) => p.id === visitorId);
   if (participant) {
     participant.isConnected = false;
   }
@@ -237,7 +240,7 @@ function handleItemAdded(item) {
 }
 
 function handleVoteUpdated(message) {
-  const item = state.items.find(i => i.id === message.itemId);
+  const item = state.items.find((i) => i.id === message.itemId);
   if (item) {
     item.votes = message.votes;
     item.votedByMe = message.votedByMe;
@@ -267,7 +270,7 @@ function updateRetroName() {
   const name = state.retro?.name || 'Retro';
   retroNameEl.textContent = name;
   document.title = `${name} - Retro`;
-  
+
   if (state.isFacilitator) {
     retroNameEl.classList.add('editable');
     retroNameEl.onclick = startEditingRetroName;
@@ -279,14 +282,14 @@ function updateRetroName() {
 
 function startEditingRetroName() {
   if (!state.isFacilitator) return;
-  
+
   const currentName = state.retro.name;
   const input = document.createElement('input');
   input.type = 'text';
   input.value = currentName;
   input.className = 'retro-name-input';
   input.maxLength = 100;
-  
+
   input.onblur = () => finishEditingRetroName(input);
   input.onkeydown = (e) => {
     if (e.key === 'Enter') {
@@ -297,7 +300,7 @@ function startEditingRetroName() {
       finishEditingRetroName(input);
     }
   };
-  
+
   retroNameEl.textContent = '';
   retroNameEl.appendChild(input);
   input.focus();
@@ -317,10 +320,12 @@ function updatePhase() {
   phaseLabel.textContent = phase.charAt(0).toUpperCase() + phase.slice(1);
   phaseLabel.className = `phase-badge phase-${phase}`;
 
-  document.querySelectorAll('.phase-message').forEach(el => el.classList.add('hidden'));
+  for (const el of document.querySelectorAll('.phase-message')) {
+    el.classList.add('hidden');
+  }
   document.getElementById(`${phase}Message`)?.classList.remove('hidden');
 
-  document.querySelectorAll('.add-item').forEach(el => {
+  document.querySelectorAll('.add-item').forEach((el) => {
     if (phase === 'adding') {
       el.classList.remove('hidden');
     } else {
@@ -341,12 +346,16 @@ function updatePhase() {
 }
 
 function updateParticipants() {
-  const connected = state.participants.filter(p => p.isConnected);
-  participantsEl.innerHTML = connected.map(p => `
+  const connected = state.participants.filter((p) => p.isConnected);
+  participantsEl.innerHTML = connected
+    .map(
+      (p) => `
     <span class="participant ${p.isFacilitator ? 'facilitator' : ''}">
       ${escapeHtml(p.name)}${p.isFacilitator ? ' (Facilitator)' : ''}
     </span>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
 function updateVotesRemaining() {
@@ -365,12 +374,14 @@ function updateItems() {
     return;
   }
 
-  let items = [...state.items];
+  const items = [...state.items];
   if (phase === 'discussion' || phase === 'complete') {
     items.sort((a, b) => b.votes - a.votes);
   }
 
-  items.forEach(item => renderItem(item));
+  for (const item of items) {
+    renderItem(item);
+  }
 }
 
 function updateItemCounts() {
@@ -378,12 +389,12 @@ function updateItemCounts() {
   if (phase !== 'adding') return;
 
   const counts = {
-    start: state.items.filter(i => i.column === 'start').length,
-    stop: state.items.filter(i => i.column === 'stop').length,
-    continue: state.items.filter(i => i.column === 'continue').length,
+    start: state.items.filter((i) => i.column === 'start').length,
+    stop: state.items.filter((i) => i.column === 'stop').length,
+    continue: state.items.filter((i) => i.column === 'continue').length,
   };
 
-  ['start', 'stop', 'continue'].forEach(column => {
+  ['start', 'stop', 'continue'].forEach((column) => {
     const container = document.getElementById(`${column}Items`);
     if (counts[column] > 0) {
       container.innerHTML = `<div class="item-count">${counts[column]} item${counts[column] !== 1 ? 's' : ''} added</div>`;
@@ -405,20 +416,24 @@ function renderItem(item) {
   itemEl.innerHTML = `
     <div class="item-text">${escapeHtml(item.text)}</div>
     ${showVotes ? `<div class="item-votes">${item.votes} vote${item.votes !== 1 ? 's' : ''}</div>` : ''}
-    ${canVote ? `
+    ${
+      canVote
+        ? `
       <div class="item-vote-controls">
         <button class="btn btn-vote ${item.votedByMe ? 'voted' : ''}" onclick="toggleVote('${item.id}')">
           ${item.votedByMe ? 'Voted' : 'Vote'}
         </button>
       </div>
-    ` : ''}
+    `
+        : ''
+    }
   `;
 
   container.appendChild(itemEl);
 }
 
 function updateItemVoteUI(itemId) {
-  const item = state.items.find(i => i.id === itemId);
+  const item = state.items.find((i) => i.id === itemId);
   if (!item) return;
 
   const itemEl = document.getElementById(`item-${itemId}`);
@@ -440,7 +455,7 @@ function updateFacilitatorControls() {
   facilitatorControls.classList.remove('hidden');
 
   const phase = state.retro.phase;
-  
+
   const nextPhases = {
     waiting: { next: 'adding', label: 'Start Adding Items' },
     adding: { next: 'voting', label: 'Start Voting' },
@@ -468,7 +483,7 @@ function updateFacilitatorControls() {
 
   let prevPhaseBtn = document.getElementById('prevPhaseBtn');
   const prevPhase = prevPhases[phase];
-  
+
   if (prevPhase) {
     if (!prevPhaseBtn) {
       prevPhaseBtn = document.createElement('button');
@@ -496,7 +511,7 @@ function addItem(column) {
 }
 
 function toggleVote(itemId) {
-  const item = state.items.find(i => i.id === itemId);
+  const item = state.items.find((i) => i.id === itemId);
   if (!item) return;
 
   if (item.votedByMe) {
@@ -526,7 +541,11 @@ function handlePrevPhase() {
 }
 
 function handleDeleteRetro() {
-  if (confirm('Are you sure you want to delete this retro? This cannot be undone.')) {
+  if (
+    confirm(
+      'Are you sure you want to delete this retro? This cannot be undone.',
+    )
+  ) {
     ws.send(JSON.stringify({ type: 'delete-retro' }));
   }
 }
@@ -544,7 +563,7 @@ window.toggleVote = toggleVote;
 
 // Setup Enter key handling for add item textareas
 function setupTextareaHandlers() {
-  ['start', 'stop', 'continue'].forEach(column => {
+  ['start', 'stop', 'continue'].forEach((column) => {
     const textarea = document.getElementById(`${column}Input`);
     if (textarea) {
       textarea.addEventListener('keydown', (e) => {

@@ -49,11 +49,24 @@ export type ClientMessage =
 
 // Server -> Client messages
 export type ServerMessage =
-  | { type: 'state'; retro: Retro; participants: Participant[]; items: Item[]; visitorId: string; votesRemaining: number }
+  | {
+      type: 'state';
+      retro: Retro;
+      participants: Participant[];
+      items: Item[];
+      visitorId: string;
+      votesRemaining: number;
+    }
   | { type: 'participant-joined'; participant: Participant }
   | { type: 'participant-left'; visitorId: string }
   | { type: 'item-added'; item: Item }
-  | { type: 'vote-updated'; itemId: string; votes: number; votedByMe: boolean; votesRemaining: number }
+  | {
+      type: 'vote-updated';
+      itemId: string;
+      votes: number;
+      votedByMe: boolean;
+      votesRemaining: number;
+    }
   | { type: 'phase-changed'; phase: Phase; items?: Item[] }
   | { type: 'retro-name-updated'; name: string }
   | { type: 'retro-deleted' }

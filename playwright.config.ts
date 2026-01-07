@@ -8,9 +8,7 @@ export default defineConfig({
   workers: 1, // Single worker to avoid port conflicts
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 30000,
-  
 
-  
   use: {
     baseURL: 'http://localhost:8787',
     trace: 'on-first-retry',
