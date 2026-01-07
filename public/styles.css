@@ -342,6 +342,25 @@ p {
   border-top: 1px solid var(--border-color);
 }
 
+.home footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.home footer a:hover {
+  color: var(--accent-orange);
+}
+
+.footer-links {
+  margin-top: 0.5rem;
+}
+
+.footer-links .separator {
+  margin: 0 0.5rem;
+  color: var(--border-color);
+}
+
 /* ===== RETRO PAGE ===== */
 .retro-page {
   padding: 1.5rem;
