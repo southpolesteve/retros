@@ -26,7 +26,9 @@ export class RetroRoom extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    this.retroId = url.pathname.split('/').pop() || '';
+    // URL is /api/retro/{retroId}/ws, so split and get index 3
+    const pathParts = url.pathname.split('/');
+    this.retroId = pathParts[3] || '';
 
     const upgradeHeader = request.headers.get('Upgrade');
     if (upgradeHeader === 'websocket') {
@@ -97,6 +99,8 @@ export class RetroRoom extends DurableObject<Env> {
     // - If retro exists but has no facilitator yet (first joiner after creation)
     const needsFacilitator = !retro || !retro.facilitatorId;
     const isFacilitator = needsFacilitator;
+    
+
 
     if (!retro) {
       // Fallback: create retro if it doesn't exist (old flow or direct URL access)
@@ -429,7 +433,7 @@ export class RetroRoom extends DurableObject<Env> {
   private broadcast(message: ServerMessage, exclude?: WebSocket): void {
     const data = JSON.stringify(message);
     for (const socket of this.ctx.getWebSockets()) {
-      if (socket !== exclude) {
+      if (socket !== exclude && socket.readyState === WebSocket.READY_STATE_OPEN) {
         socket.send(data);
       }
     }
