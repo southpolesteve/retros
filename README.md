@@ -26,6 +26,9 @@ A real-time retrospective app for teams, built on Cloudflare Workers, Durable Ob
 - **Durable Objects** - WebSocket rooms with hibernation for cost efficiency
 - **D1** - SQLite database for persistence
 - **Vanilla JS** - No framework, fast and simple
+- **Biome** - Linting and formatting
+- **tsgo** - Fast TypeScript type checking
+- **Playwright** - E2E testing
 
 ## Quick Start
 
@@ -38,6 +41,26 @@ pnpm run db:init
 
 # Start dev server
 pnpm run dev
+```
+
+## Scripts
+
+```bash
+pnpm run dev          # Start dev server
+pnpm run deploy       # Deploy to Cloudflare
+pnpm run db:init      # Initialize local D1 database
+
+# Testing
+pnpm test             # Run e2e tests
+pnpm run test:ui      # Run tests with interactive UI
+pnpm run test:headed  # Run tests with visible browser
+
+# Code Quality
+pnpm run typecheck    # Type check with tsgo
+pnpm run lint         # Lint with Biome
+pnpm run lint:fix     # Auto-fix lint issues
+pnpm run format       # Format code with Biome
+pnpm run check        # Run typecheck + lint
 ```
 
 ## Deploy to Cloudflare

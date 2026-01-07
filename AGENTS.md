@@ -22,7 +22,10 @@ A real-time retrospective application for teams, built entirely on Cloudflare's 
 | Durable Objects | Real-time WebSocket rooms with hibernation API |
 | D1 (SQLite) | Persistent storage for retros, items, votes |
 | TypeScript | Type-safe backend development |
-| Vanilla JS/CSS | Frontend (no framework, ~560 lines total) |
+| Vanilla JS/CSS | Frontend (no framework, ~600 lines total) |
+| Biome | Linting and formatting |
+| tsgo | Fast TypeScript type checking |
+| Playwright | E2E browser testing |
 
 ## Architecture
 
@@ -58,6 +61,15 @@ retros/
 │   ├── retro.html      # Retro room page
 │   ├── app.js          # Client-side JavaScript
 │   └── styles.css      # Light theme CSS
+├── e2e/
+│   ├── retro.spec.ts   # Tests for retro creation/joining
+│   ├── phases.spec.ts  # Tests for phase transitions
+│   └── realtime.spec.ts # Tests for real-time sync
+├── .github/
+│   └── workflows/
+│       └── test.yml    # CI workflow (lint, typecheck, e2e tests)
+├── biome.json          # Biome linting/formatting config
+├── playwright.config.ts # Playwright test config
 ├── wrangler.jsonc      # Cloudflare configuration
 ├── package.json
 ├── tsconfig.json
@@ -67,8 +79,8 @@ retros/
 ## Development
 
 ### Prerequisites
-- Node.js 18+
-- pnpm (or npm)
+- Node.js 24+ (see `.nvmrc`)
+- pnpm
 - Cloudflare account (for deployment)
 
 ### Local Development
@@ -86,17 +98,50 @@ pnpm run dev
 
 The dev server runs on a random port (check terminal output). Open multiple browser windows to test real-time sync.
 
-### Testing Checklist
-1. Create retro from home page with a name
-2. Verify first joiner becomes facilitator
-3. Join from another browser - should see retro name, join as participant
-4. Test all phase transitions (facilitator controls)
-5. Test adding items (hidden during Adding phase)
-6. Test voting (3 vote limit, can vote multiple times on same item)
-7. Verify items sorted by votes in Discussion
-8. Test page refresh (should auto-reconnect)
-9. Test facilitator renaming retro
-10. Test delete retro
+### Code Quality
+
+```bash
+# Type check with tsgo (fast native TypeScript)
+pnpm run typecheck
+
+# Lint with Biome
+pnpm run lint
+
+# Auto-fix lint issues
+pnpm run lint:fix
+
+# Format code
+pnpm run format
+
+# Run all checks (typecheck + lint)
+pnpm run check
+```
+
+### Testing
+
+```bash
+# Run all e2e tests
+pnpm test
+
+# Run tests with interactive UI
+pnpm run test:ui
+
+# Run tests with visible browser
+pnpm run test:headed
+```
+
+**E2E Test Coverage (14 tests):**
+- Retro creation and joining (facilitator assignment)
+- Phase transitions (facilitator controls)
+- Real-time collaboration (multi-user sync)
+- Items and voting
+- Delete retro
+
+### CI/CD
+
+GitHub Actions runs on every push and PR:
+- **Type Check & Lint** - Runs `typecheck` and `lint`
+- **E2E Tests** - Runs Playwright tests with Chromium
 
 ## Deployment to Cloudflare
 
@@ -145,6 +190,15 @@ npx wrangler d1 execute retros-db --remote --file=src/db/schema.sql
 ```
 
 ## Coding Guidelines
+
+### Code Style
+
+This project uses **Biome** for linting and formatting:
+- Single quotes for strings
+- 2-space indentation
+- Organized imports (auto-sorted)
+
+Run `pnpm run lint:fix` to auto-fix issues.
 
 ### Durable Objects with WebSocket Hibernation
 
@@ -263,9 +317,16 @@ CREATE TABLE votes (
 - Items hidden during Adding phase (by design)
 - Check phase is 'voting', 'discussion', or 'complete'
 
+### Tests failing locally
+- Make sure port 8787 is free before running tests
+- Run `pnpm run db:init` to reset the database
+- Tests automatically start a fresh dev server
+
 ## Resources
 
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 - [Durable Objects](https://developers.cloudflare.com/durable-objects/)
 - [D1 Database](https://developers.cloudflare.com/d1/)
 - [WebSocket Hibernation API](https://developers.cloudflare.com/durable-objects/api/websockets/)
+- [Biome](https://biomejs.dev/)
+- [Playwright](https://playwright.dev/)
