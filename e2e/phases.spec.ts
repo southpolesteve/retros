@@ -25,10 +25,20 @@ test.describe('Phase Transitions', () => {
     // Advance to Adding
     await page.click('#nextPhaseBtn');
     await expect(page.locator('#phaseLabel')).toHaveText('Adding');
-    await expect(page.locator('#nextPhaseBtn')).toHaveText('Start Voting');
+    await expect(page.locator('#nextPhaseBtn')).toHaveText(
+      'Group Similar Items',
+    );
 
     // Add item inputs should be visible
     await expect(page.locator('.add-item').first()).toBeVisible();
+
+    // Advance to Grouping
+    await page.click('#nextPhaseBtn');
+    await expect(page.locator('#phaseLabel')).toHaveText('Grouping');
+    await expect(page.locator('#nextPhaseBtn')).toHaveText('Start Voting');
+
+    // Add item inputs should be hidden
+    await expect(page.locator('.add-item').first()).toBeHidden();
 
     // Advance to Voting
     await page.click('#nextPhaseBtn');
@@ -36,9 +46,6 @@ test.describe('Phase Transitions', () => {
     await expect(page.locator('#nextPhaseBtn')).toHaveText(
       'End Voting & Discuss',
     );
-
-    // Add item inputs should be hidden
-    await expect(page.locator('.add-item').first()).toBeHidden();
 
     // Advance to Discussion
     await page.click('#nextPhaseBtn');
@@ -69,10 +76,40 @@ test.describe('Phase Transitions', () => {
 
     // Advance to Voting
     await page.click('#nextPhaseBtn'); // Adding
+    await page.click('#nextPhaseBtn'); // Grouping
     await page.click('#nextPhaseBtn'); // Voting
     await expect(page.locator('#phaseLabel')).toHaveText('Voting');
 
+    // Go back to Grouping
+    await page.locator('#prevPhaseBtn').click();
+    await expect(page.locator('#phaseLabel')).toHaveText('Grouping');
+
     // Go back to Adding
+    await page.locator('#prevPhaseBtn').click();
+    await expect(page.locator('#phaseLabel')).toHaveText('Adding');
+  });
+
+  test('going back phases works after waiting (hibernation test)', async ({
+    page,
+  }) => {
+    // Advance through phases
+    await page.click('#nextPhaseBtn'); // Adding
+    await expect(page.locator('#phaseLabel')).toHaveText('Adding');
+
+    await page.click('#nextPhaseBtn'); // Grouping
+    await expect(page.locator('#phaseLabel')).toHaveText('Grouping');
+
+    await page.click('#nextPhaseBtn'); // Voting
+    await expect(page.locator('#phaseLabel')).toHaveText('Voting');
+
+    // Wait a moment to simulate potential hibernation
+    await page.waitForTimeout(500);
+
+    // Go back - this should work even after hibernation
+    await page.locator('#prevPhaseBtn').click();
+    await expect(page.locator('#phaseLabel')).toHaveText('Grouping');
+
+    // And back again
     await page.locator('#prevPhaseBtn').click();
     await expect(page.locator('#phaseLabel')).toHaveText('Adding');
   });
@@ -92,7 +129,7 @@ test.describe('Phase Transitions', () => {
     // Item count should appear (items hidden during Adding)
     await expect(page.locator('#startItems')).toContainText('1 item added');
 
-    // Advance to Voting - add-item should be hidden again
+    // Advance to Grouping - add-item should be hidden, items visible
     await page.click('#nextPhaseBtn');
     await expect(page.locator('.add-item').first()).toBeHidden();
 
@@ -109,8 +146,9 @@ test.describe('Phase Transitions', () => {
     await page.fill('#startInput', 'Votable item');
     await page.click('button[onclick="addItem(\'start\')"]');
 
-    // Advance to Voting
-    await page.click('#nextPhaseBtn');
+    // Advance to Grouping then Voting
+    await page.click('#nextPhaseBtn'); // Grouping
+    await page.click('#nextPhaseBtn'); // Voting
     await expect(page.locator('#phaseLabel')).toHaveText('Voting');
 
     // Vote button should be visible

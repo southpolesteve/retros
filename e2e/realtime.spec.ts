@@ -84,8 +84,9 @@ test.describe('Real-time Collaboration', () => {
     await expect(page1.locator('#stopItems')).toContainText('1 item added');
     await expect(page2.locator('#stopItems')).toContainText('1 item added');
 
-    // Advance to Voting to reveal items
-    await page1.click('#nextPhaseBtn');
+    // Advance to Grouping then Voting to reveal items
+    await page1.click('#nextPhaseBtn'); // Grouping
+    await page1.click('#nextPhaseBtn'); // Voting
     await expect(page1.locator('#phaseLabel')).toHaveText('Voting');
 
     // Both should see all items revealed
@@ -177,8 +178,9 @@ test.describe('Real-time Collaboration', () => {
     await page1.fill('#startInput', 'Vote on this');
     await page1.click('button[onclick="addItem(\'start\')"]');
 
-    // Advance to Voting
-    await page1.click('#nextPhaseBtn');
+    // Advance to Grouping then Voting
+    await page1.click('#nextPhaseBtn'); // Grouping
+    await page1.click('#nextPhaseBtn'); // Voting
     await expect(page1.locator('#phaseLabel')).toHaveText('Voting');
 
     // Both users vote on the item

@@ -1,5 +1,11 @@
 // Phase types
-export type Phase = 'waiting' | 'adding' | 'voting' | 'discussion' | 'complete';
+export type Phase =
+  | 'waiting'
+  | 'adding'
+  | 'grouping'
+  | 'voting'
+  | 'discussion'
+  | 'complete';
 
 // Column types
 export type Column = 'start' | 'stop' | 'continue';

@@ -359,6 +359,7 @@ export class RetroRoom extends DurableObject<Env> {
     const phaseOrder: Phase[] = [
       'waiting',
       'adding',
+      'grouping',
       'voting',
       'discussion',
       'complete',
@@ -380,7 +381,12 @@ export class RetroRoom extends DurableObject<Env> {
       this.clearAllTypingStates();
     }
 
-    if (phase === 'voting' || phase === 'discussion' || phase === 'complete') {
+    if (
+      phase === 'grouping' ||
+      phase === 'voting' ||
+      phase === 'discussion' ||
+      phase === 'complete'
+    ) {
       const items = await this.getItemsWithVotes();
       const groups = await this.getGroupsWithVotes();
       this.broadcast({ type: 'phase-changed', phase, items, groups });
@@ -468,15 +474,10 @@ export class RetroRoom extends DurableObject<Env> {
     }
 
     const retro = await this.getRetro();
-    if (
-      !retro ||
-      (retro.phase !== 'voting' &&
-        retro.phase !== 'discussion' &&
-        retro.phase !== 'complete')
-    ) {
+    if (!retro || retro.phase !== 'grouping') {
       this.sendTo(ws, {
         type: 'error',
-        message: 'Cannot group items in current phase',
+        message: 'Can only group items in Grouping phase',
       });
       return;
     }
@@ -584,15 +585,10 @@ export class RetroRoom extends DurableObject<Env> {
     }
 
     const retro = await this.getRetro();
-    if (
-      !retro ||
-      (retro.phase !== 'voting' &&
-        retro.phase !== 'discussion' &&
-        retro.phase !== 'complete')
-    ) {
+    if (!retro || retro.phase !== 'grouping') {
       this.sendTo(ws, {
         type: 'error',
-        message: 'Cannot ungroup items in current phase',
+        message: 'Can only ungroup items in Grouping phase',
       });
       return;
     }

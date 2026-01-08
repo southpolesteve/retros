@@ -305,8 +305,15 @@ function handleTypingActivity(activity) {
 }
 
 function handleItemsGrouped(group) {
-  // Add the new group
-  state.groups.push(group);
+  // Check if group already exists (adding to existing group)
+  const existingGroupIndex = state.groups.findIndex((g) => g.id === group.id);
+  if (existingGroupIndex >= 0) {
+    // Replace the existing group with updated version
+    state.groups[existingGroupIndex] = group;
+  } else {
+    // Add new group
+    state.groups.push(group);
+  }
   // Update the items to mark them as grouped
   for (const groupItem of group.items) {
     const item = state.items.find((i) => i.id === groupItem.id);
@@ -419,7 +426,12 @@ function updatePhase() {
     votesRemainingEl.classList.add('hidden');
   }
 
-  if (phase === 'voting' || phase === 'discussion' || phase === 'complete') {
+  if (
+    phase === 'grouping' ||
+    phase === 'voting' ||
+    phase === 'discussion' ||
+    phase === 'complete'
+  ) {
     updateItems();
   }
 }
@@ -554,8 +566,7 @@ function renderItem(item) {
 
   const showVotes = phase === 'discussion' || phase === 'complete';
   const canVote = phase === 'voting';
-  const canDrag =
-    state.isFacilitator && (phase === 'voting' || phase === 'discussion');
+  const canDrag = state.isFacilitator && phase === 'grouping';
 
   // Make items draggable for facilitator
   if (canDrag) {
@@ -597,8 +608,8 @@ function renderGroup(group) {
   groupEl.id = `group-${group.id}`;
 
   const showVotes = phase === 'discussion' || phase === 'complete';
-  const canDrag =
-    state.isFacilitator && (phase === 'voting' || phase === 'discussion');
+  const canDrag = state.isFacilitator && phase === 'grouping';
+  const canEditGroup = state.isFacilitator && phase === 'grouping';
 
   // Groups can also receive drops
   if (canDrag) {
@@ -611,11 +622,11 @@ function renderGroup(group) {
   }
 
   // Build group header
-  const titleHtml = state.isFacilitator
+  const titleHtml = canEditGroup
     ? `<span class="group-title editable" onclick="startEditingGroupTitle('${group.id}')">${escapeHtml(group.title)}</span>`
     : `<span class="group-title">${escapeHtml(group.title)}</span>`;
 
-  const ungroupBtn = state.isFacilitator
+  const ungroupBtn = canEditGroup
     ? `<button class="btn btn-small btn-ungroup" onclick="ungroupItems('${group.id}')">Ungroup</button>`
     : '';
 
@@ -847,7 +858,8 @@ function updateFacilitatorControls() {
 
   const nextPhases = {
     waiting: { next: 'adding', label: 'Start Adding Items' },
-    adding: { next: 'voting', label: 'Start Voting' },
+    adding: { next: 'grouping', label: 'Group Similar Items' },
+    grouping: { next: 'voting', label: 'Start Voting' },
     voting: { next: 'discussion', label: 'End Voting & Discuss' },
     discussion: { next: 'complete', label: 'Complete Retro' },
     complete: null,
@@ -856,7 +868,8 @@ function updateFacilitatorControls() {
   const prevPhases = {
     waiting: null,
     adding: { prev: 'waiting', label: 'Back to Waiting' },
-    voting: { prev: 'adding', label: 'Back to Adding' },
+    grouping: { prev: 'adding', label: 'Back to Adding' },
+    voting: { prev: 'grouping', label: 'Back to Grouping' },
     discussion: { prev: 'voting', label: 'Back to Voting' },
     complete: null,
   };
