@@ -8,6 +8,7 @@
     "dev:test": "rm -rf .wrangler/state/v3/d1 && pnpm run db:init && wrangler dev --port 8787",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute retros-db --local --file=src/db/schema.sql",
+    "db:migrate": "wrangler d1 execute retros-db --remote --file=src/db/schema.sql",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
