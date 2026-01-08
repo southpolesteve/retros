@@ -82,7 +82,7 @@ export class RetroRoom extends DurableObject<Env> {
   ): Promise<void> {
     switch (data.type) {
       case 'join':
-        await this.handleJoin(ws, data.name, data.retroName);
+        await this.handleJoin(ws, data.name, data.visitorId, data.retroName);
         break;
       case 'add-item':
         await this.handleAddItem(ws, data.column, data.text);
@@ -120,16 +120,27 @@ export class RetroRoom extends DurableObject<Env> {
   private async handleJoin(
     ws: WebSocket,
     name: string,
+    existingVisitorId?: string,
     retroName?: string,
   ): Promise<void> {
     let retro = await this.getRetro();
-    const visitorId = generateId();
+
+    // Use existing visitorId if provided (reconnect), otherwise generate new one
+    const visitorId = existingVisitorId || generateId();
 
     // Determine if this person should be facilitator:
+    // - If reconnecting with the stored facilitator_id
     // - If retro doesn't exist (shouldn't happen with new flow, but fallback)
     // - If retro exists but has no facilitator yet (first joiner after creation)
-    const needsFacilitator = !retro || !retro.facilitatorId;
-    const isFacilitator = needsFacilitator;
+    let isFacilitator = false;
+
+    if (retro && retro.facilitatorId === visitorId) {
+      // Reconnecting as the facilitator
+      isFacilitator = true;
+    } else if (!retro || !retro.facilitatorId) {
+      // First person to join becomes facilitator
+      isFacilitator = true;
+    }
 
     if (!retro) {
       // Fallback: create retro if it doesn't exist (old flow or direct URL access)

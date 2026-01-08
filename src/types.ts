@@ -58,7 +58,7 @@ export interface TypingActivity {
 
 // Client -> Server messages
 export type ClientMessage =
-  | { type: 'join'; name: string; retroName?: string }
+  | { type: 'join'; name: string; visitorId?: string; retroName?: string }
   | { type: 'add-item'; column: Column; text: string }
   | { type: 'vote'; itemId: string }
   | { type: 'unvote'; itemId: string }

@@ -62,9 +62,9 @@ async function init() {
 
   // Check if we have saved credentials for this retro URL
   const saved = getSavedSession();
-  if (saved) {
-    // Auto-reconnect with saved name
-    connect(saved.visitorName);
+  if (saved?.visitorId) {
+    // Auto-reconnect with saved visitorId and name
+    connect(saved.visitorName, saved.visitorId);
     return;
   }
 
@@ -108,9 +108,12 @@ function getSavedSession() {
   return null;
 }
 
-function saveSession(visitorName) {
+function saveSession(visitorId, visitorName) {
   try {
-    localStorage.setItem(storageKey, JSON.stringify({ visitorName }));
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({ visitorId, visitorName }),
+    );
   } catch (_e) {}
 }
 
@@ -129,10 +132,11 @@ function handleJoin() {
   const retroName = retroNameInput.classList.contains('hidden')
     ? null
     : retroNameInput.value.trim();
-  connect(name, retroName);
+  // New join - no existing visitorId
+  connect(name, null, retroName);
 }
 
-function connect(name, retroName = null) {
+function connect(name, visitorId = null, retroName = null) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/api/retro/${retroId}/ws`;
 
@@ -140,6 +144,7 @@ function connect(name, retroName = null) {
 
   ws.onopen = () => {
     const joinMsg = { type: 'join', name };
+    if (visitorId) joinMsg.visitorId = visitorId;
     if (retroName) joinMsg.retroName = retroName;
     ws.send(JSON.stringify(joinMsg));
   };
@@ -218,8 +223,8 @@ function handleState(message) {
   const me = state.participants.find((p) => p.id === state.visitorId);
   if (me) {
     state.visitorName = me.name;
-    // Save session for reconnect on refresh
-    saveSession(me.name);
+    // Save session for reconnect on refresh (include visitorId to preserve facilitator status)
+    saveSession(state.visitorId, me.name);
   }
 
   // Show main content
