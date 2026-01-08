@@ -47,6 +47,7 @@ export interface WebSocketAttachment {
   visitorName: string;
   isFacilitator: boolean;
   typingIn: Column | null; // which column they're currently typing in
+  retroId: string; // needed to restore state after hibernation
 }
 
 // Typing activity state per column

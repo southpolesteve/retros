@@ -45,6 +45,15 @@ export class RetroRoom extends DurableObject<Env> {
   ): Promise<void> {
     if (typeof message !== 'string') return;
 
+    // Restore retroId from attachment after hibernation if needed
+    if (!this.retroId) {
+      const attachment =
+        ws.deserializeAttachment() as WebSocketAttachment | null;
+      if (attachment?.retroId) {
+        this.retroId = attachment.retroId;
+      }
+    }
+
     try {
       const data: ClientMessage = JSON.parse(message);
       await this.handleMessage(ws, data);
@@ -177,6 +186,7 @@ export class RetroRoom extends DurableObject<Env> {
       visitorName: name,
       isFacilitator,
       typingIn: null,
+      retroId: this.retroId,
     };
     ws.serializeAttachment(attachment);
 
