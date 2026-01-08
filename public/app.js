@@ -6,9 +6,18 @@ const state = {
   retro: null,
   participants: [],
   items: [],
+  groups: [],
   votesRemaining: 3,
   isFacilitator: false,
+  typingActivity: { start: 0, stop: 0, continue: 0 },
 };
+
+// Drag and drop state
+let draggedItemId = null;
+
+// Typing state - track what we're currently typing in
+let currentlyTypingIn = null;
+let typingTimeout = null;
 
 // Get retro ID from URL
 const retroId = window.location.pathname.split('/').pop();
@@ -167,10 +176,22 @@ function handleMessage(message) {
       handleVoteUpdated(message);
       break;
     case 'phase-changed':
-      handlePhaseChanged(message.phase, message.items);
+      handlePhaseChanged(message.phase, message.items, message.groups);
       break;
     case 'retro-name-updated':
       handleRetroNameUpdated(message.name);
+      break;
+    case 'items-grouped':
+      handleItemsGrouped(message.group);
+      break;
+    case 'items-ungrouped':
+      handleItemsUngrouped(message.groupId, message.items);
+      break;
+    case 'group-title-updated':
+      handleGroupTitleUpdated(message.groupId, message.title);
+      break;
+    case 'typing-activity':
+      handleTypingActivity(message.activity);
       break;
     case 'retro-deleted':
       clearSession();
@@ -189,6 +210,7 @@ function handleState(message) {
   state.retro = message.retro;
   state.participants = message.participants;
   state.items = message.items;
+  state.groups = message.groups || [];
   state.votesRemaining = message.votesRemaining;
   state.isFacilitator = message.retro.facilitatorId === message.visitorId;
 
@@ -250,14 +272,66 @@ function handleVoteUpdated(message) {
   updateItemVoteUI(message.itemId);
 }
 
-function handlePhaseChanged(phase, items) {
+function handlePhaseChanged(phase, items, groups) {
   state.retro.phase = phase;
   if (items) {
     state.items = items;
-    updateItems();
   }
+  if (groups) {
+    state.groups = groups;
+  }
+  // Reset typing state when phase changes
+  if (phase !== 'adding') {
+    state.typingActivity = { start: 0, stop: 0, continue: 0 };
+    currentlyTypingIn = null;
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+      typingTimeout = null;
+    }
+  }
+  updateItems();
   updatePhase();
   updateFacilitatorControls();
+}
+
+function handleTypingActivity(activity) {
+  state.typingActivity = activity;
+  updateTypingIndicators();
+}
+
+function handleItemsGrouped(group) {
+  // Add the new group
+  state.groups.push(group);
+  // Update the items to mark them as grouped
+  for (const groupItem of group.items) {
+    const item = state.items.find((i) => i.id === groupItem.id);
+    if (item) {
+      item.groupId = group.id;
+    }
+  }
+  updateItems();
+}
+
+function handleItemsUngrouped(groupId, items) {
+  // Remove the group
+  state.groups = state.groups.filter((g) => g.id !== groupId);
+  // Update items to mark them as ungrouped and update their data
+  for (const ungroupedItem of items) {
+    const item = state.items.find((i) => i.id === ungroupedItem.id);
+    if (item) {
+      item.groupId = null;
+      item.votes = ungroupedItem.votes;
+    }
+  }
+  updateItems();
+}
+
+function handleGroupTitleUpdated(groupId, title) {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (group) {
+    group.title = title;
+    updateItems();
+  }
 }
 
 function handleRetroNameUpdated(name) {
@@ -374,13 +448,52 @@ function updateItems() {
     return;
   }
 
-  const items = [...state.items];
+  // Separate ungrouped items from grouped items
+  const ungroupedItems = state.items.filter((item) => !item.groupId);
+  const groups = [...state.groups];
+
+  // Sort by votes in discussion/complete phases
   if (phase === 'discussion' || phase === 'complete') {
-    items.sort((a, b) => b.votes - a.votes);
+    ungroupedItems.sort((a, b) => b.votes - a.votes);
+    groups.sort((a, b) => b.votes - a.votes);
   }
 
-  for (const item of items) {
-    renderItem(item);
+  // Render groups first, then ungrouped items
+  // Combine and sort by votes for proper ordering
+  const allRenderables = [];
+
+  for (const group of groups) {
+    allRenderables.push({
+      type: 'group',
+      data: group,
+      votes: group.votes,
+      column: group.column,
+    });
+  }
+  for (const item of ungroupedItems) {
+    allRenderables.push({
+      type: 'item',
+      data: item,
+      votes: item.votes,
+      column: item.column,
+    });
+  }
+
+  // Sort by votes in discussion/complete
+  if (phase === 'discussion' || phase === 'complete') {
+    allRenderables.sort((a, b) => b.votes - a.votes);
+  }
+
+  // Render each by column
+  for (const column of ['start', 'stop', 'continue']) {
+    const columnItems = allRenderables.filter((r) => r.column === column);
+    for (const renderable of columnItems) {
+      if (renderable.type === 'group') {
+        renderGroup(renderable.data);
+      } else {
+        renderItem(renderable.data);
+      }
+    }
   }
 }
 
@@ -394,12 +507,36 @@ function updateItemCounts() {
     continue: state.items.filter((i) => i.column === 'continue').length,
   };
 
-  ['start', 'stop', 'continue'].forEach((column) => {
+  for (const column of ['start', 'stop', 'continue']) {
     const container = document.getElementById(`${column}Items`);
-    if (counts[column] > 0) {
-      container.innerHTML = `<div class="item-count">${counts[column]} item${counts[column] !== 1 ? 's' : ''} added</div>`;
+    const typing = state.typingActivity[column] || 0;
+    const count = counts[column];
+
+    let html = '';
+
+    // Show item count
+    if (count > 0) {
+      html += `<div class="item-count">${count} item${count !== 1 ? 's' : ''} added</div>`;
     }
-  });
+
+    // Show typing indicator (excluding self)
+    const othersTyping = currentlyTypingIn === column ? typing - 1 : typing;
+    if (othersTyping > 0) {
+      html += `<div class="typing-indicator">
+        <span class="typing-dots"><span></span><span></span><span></span></span>
+        ${othersTyping} ${othersTyping === 1 ? 'person is' : 'people are'} typing...
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+}
+
+function updateTypingIndicators() {
+  // Only update typing indicators during adding phase
+  if (state.retro?.phase === 'adding') {
+    updateItemCounts();
+  }
 }
 
 function renderItem(item) {
@@ -412,6 +549,20 @@ function renderItem(item) {
 
   const showVotes = phase === 'discussion' || phase === 'complete';
   const canVote = phase === 'voting';
+  const canDrag =
+    state.isFacilitator && (phase === 'voting' || phase === 'discussion');
+
+  // Make items draggable for facilitator
+  if (canDrag) {
+    itemEl.draggable = true;
+    itemEl.classList.add('draggable');
+    itemEl.addEventListener('dragstart', (e) => handleDragStart(e, item.id));
+    itemEl.addEventListener('dragend', handleDragEnd);
+    itemEl.addEventListener('dragover', handleDragOver);
+    itemEl.addEventListener('dragenter', (e) => handleDragEnter(e, item.id));
+    itemEl.addEventListener('dragleave', handleDragLeave);
+    itemEl.addEventListener('drop', (e) => handleDrop(e, item.id));
+  }
 
   itemEl.innerHTML = `
     <div class="item-text">${escapeHtml(item.text)}</div>
@@ -430,6 +581,239 @@ function renderItem(item) {
   `;
 
   container.appendChild(itemEl);
+}
+
+function renderGroup(group) {
+  const container = document.getElementById(`${group.column}Items`);
+  const phase = state.retro.phase;
+
+  const groupEl = document.createElement('div');
+  groupEl.className = 'item-group';
+  groupEl.id = `group-${group.id}`;
+
+  const showVotes = phase === 'discussion' || phase === 'complete';
+  const canDrag =
+    state.isFacilitator && (phase === 'voting' || phase === 'discussion');
+
+  // Groups can also receive drops
+  if (canDrag) {
+    groupEl.addEventListener('dragover', handleDragOver);
+    groupEl.addEventListener('dragenter', (e) =>
+      handleDragEnterGroup(e, group.id),
+    );
+    groupEl.addEventListener('dragleave', handleDragLeave);
+    groupEl.addEventListener('drop', (e) => handleDropOnGroup(e, group.id));
+  }
+
+  // Build group header
+  const titleHtml = state.isFacilitator
+    ? `<span class="group-title editable" onclick="startEditingGroupTitle('${group.id}')">${escapeHtml(group.title)}</span>`
+    : `<span class="group-title">${escapeHtml(group.title)}</span>`;
+
+  const ungroupBtn = state.isFacilitator
+    ? `<button class="btn btn-small btn-ungroup" onclick="ungroupItems('${group.id}')">Ungroup</button>`
+    : '';
+
+  let itemsHtml = '';
+  for (const item of group.items) {
+    const canVote = phase === 'voting';
+    const itemDraggable = canDrag ? 'draggable="true"' : '';
+    const itemDraggableClass = canDrag ? 'draggable' : '';
+
+    itemsHtml += `
+      <div class="group-item ${itemDraggableClass}" id="item-${item.id}" ${itemDraggable}
+           ${canDrag ? `ondragstart="handleDragStart(event, '${item.id}')" ondragend="handleDragEnd(event)"` : ''}>
+        <div class="item-text">${escapeHtml(item.text)}</div>
+        ${
+          canVote
+            ? `
+          <div class="item-vote-controls">
+            <button class="btn btn-vote ${item.votedByMe ? 'voted' : ''}" onclick="toggleVote('${item.id}')">
+              ${item.votedByMe ? 'Voted' : 'Vote'}
+            </button>
+          </div>
+        `
+            : ''
+        }
+      </div>
+    `;
+  }
+
+  groupEl.innerHTML = `
+    <div class="group-header">
+      ${titleHtml}
+      ${showVotes ? `<span class="group-votes">${group.votes} vote${group.votes !== 1 ? 's' : ''}</span>` : ''}
+      ${ungroupBtn}
+    </div>
+    <div class="group-items">
+      ${itemsHtml}
+    </div>
+  `;
+
+  container.appendChild(groupEl);
+}
+
+// Drag and drop handlers
+function handleDragStart(e, itemId) {
+  draggedItemId = itemId;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', itemId);
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedItemId = null;
+  // Remove all drop-target classes
+  for (const el of document.querySelectorAll('.drop-target')) {
+    el.classList.remove('drop-target');
+  }
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e, itemId) {
+  e.preventDefault();
+  if (draggedItemId && draggedItemId !== itemId) {
+    // Check if same column
+    const draggedItem = state.items.find((i) => i.id === draggedItemId);
+    const targetItem = state.items.find((i) => i.id === itemId);
+    if (
+      draggedItem &&
+      targetItem &&
+      draggedItem.column === targetItem.column &&
+      !targetItem.groupId
+    ) {
+      e.currentTarget.classList.add('drop-target');
+    }
+  }
+}
+
+function handleDragEnterGroup(e, groupId) {
+  e.preventDefault();
+  if (draggedItemId) {
+    const draggedItem = state.items.find((i) => i.id === draggedItemId);
+    const targetGroup = state.groups.find((g) => g.id === groupId);
+    if (
+      draggedItem &&
+      targetGroup &&
+      draggedItem.column === targetGroup.column &&
+      draggedItem.groupId !== groupId
+    ) {
+      e.currentTarget.classList.add('drop-target');
+    }
+  }
+}
+
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove('drop-target');
+}
+
+function handleDrop(e, targetItemId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-target');
+
+  if (!draggedItemId || draggedItemId === targetItemId) return;
+
+  const draggedItem = state.items.find((i) => i.id === draggedItemId);
+  const targetItem = state.items.find((i) => i.id === targetItemId);
+
+  if (!draggedItem || !targetItem) return;
+  if (draggedItem.column !== targetItem.column) return;
+  if (draggedItem.groupId || targetItem.groupId) return;
+
+  // Group these two items together
+  ws.send(
+    JSON.stringify({
+      type: 'group-items',
+      itemIds: [targetItemId, draggedItemId],
+    }),
+  );
+
+  draggedItemId = null;
+}
+
+function handleDropOnGroup(e, groupId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drop-target');
+
+  if (!draggedItemId) return;
+
+  const draggedItem = state.items.find((i) => i.id === draggedItemId);
+  const targetGroup = state.groups.find((g) => g.id === groupId);
+
+  if (!draggedItem || !targetGroup) return;
+  if (draggedItem.column !== targetGroup.column) return;
+  if (draggedItem.groupId === groupId) return;
+
+  // Add this item to the existing group
+  const existingItemIds = targetGroup.items.map((i) => i.id);
+  ws.send(
+    JSON.stringify({
+      type: 'group-items',
+      itemIds: [...existingItemIds, draggedItemId],
+      title: targetGroup.title,
+    }),
+  );
+
+  draggedItemId = null;
+}
+
+function ungroupItems(groupId) {
+  ws.send(JSON.stringify({ type: 'ungroup', groupId }));
+}
+
+function startEditingGroupTitle(groupId) {
+  if (!state.isFacilitator) return;
+
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) return;
+
+  const groupEl = document.getElementById(`group-${groupId}`);
+  const titleEl = groupEl.querySelector('.group-title');
+  const currentTitle = group.title;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentTitle;
+  input.className = 'group-title-input';
+  input.maxLength = 100;
+
+  input.onblur = () => finishEditingGroupTitle(groupId, input);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      finishEditingGroupTitle(groupId, input);
+    } else if (e.key === 'Escape') {
+      input.value = currentTitle;
+      finishEditingGroupTitle(groupId, input);
+    }
+  };
+
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function finishEditingGroupTitle(groupId, input) {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) return;
+
+  const newTitle = input.value.trim() || 'Grouped Items';
+  if (newTitle !== group.title) {
+    ws.send(
+      JSON.stringify({ type: 'update-group-title', groupId, title: newTitle }),
+    );
+  }
+
+  const span = document.createElement('span');
+  span.className = 'group-title editable';
+  span.textContent = group.title;
+  span.onclick = () => startEditingGroupTitle(groupId);
+  input.replaceWith(span);
 }
 
 function updateItemVoteUI(itemId) {
@@ -508,6 +892,9 @@ function addItem(column) {
 
   ws.send(JSON.stringify({ type: 'add-item', column, text }));
   input.value = '';
+
+  // Clear typing state after submitting
+  sendTypingState(column, false);
 }
 
 function toggleVote(itemId) {
@@ -560,10 +947,73 @@ function escapeHtml(text) {
 // Make functions available globally for onclick handlers
 window.addItem = addItem;
 window.toggleVote = toggleVote;
+window.ungroupItems = ungroupItems;
+window.startEditingGroupTitle = startEditingGroupTitle;
+window.handleDragStart = handleDragStart;
+window.handleDragEnd = handleDragEnd;
 
-// Setup Enter key handling for add item textareas
+// Typing state management
+function sendTypingState(column, isTyping) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  // Only send if state actually changed
+  const wasTyping = currentlyTypingIn === column;
+  if (isTyping === wasTyping && isTyping) return;
+
+  if (isTyping) {
+    // Stop typing in any previous column
+    if (currentlyTypingIn && currentlyTypingIn !== column) {
+      ws.send(
+        JSON.stringify({
+          type: 'typing',
+          column: currentlyTypingIn,
+          isTyping: false,
+        }),
+      );
+    }
+    currentlyTypingIn = column;
+    ws.send(JSON.stringify({ type: 'typing', column, isTyping: true }));
+  } else if (currentlyTypingIn === column) {
+    currentlyTypingIn = null;
+    ws.send(JSON.stringify({ type: 'typing', column, isTyping: false }));
+  }
+}
+
+function handleTextareaInput(column) {
+  const textarea = document.getElementById(`${column}Input`);
+  const hasContent = textarea.value.trim().length > 0;
+
+  if (hasContent) {
+    sendTypingState(column, true);
+
+    // Reset typing timeout - stop typing indicator after 3s of no input
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+    }
+    typingTimeout = setTimeout(() => {
+      sendTypingState(column, false);
+    }, 3000);
+  } else {
+    // Empty textarea - stop typing
+    sendTypingState(column, false);
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+      typingTimeout = null;
+    }
+  }
+}
+
+function handleTextareaBlur(column) {
+  // When leaving a textarea, check if it's empty and stop typing
+  const textarea = document.getElementById(`${column}Input`);
+  if (!textarea.value.trim()) {
+    sendTypingState(column, false);
+  }
+}
+
+// Setup Enter key handling and typing detection for add item textareas
 function setupTextareaHandlers() {
-  ['start', 'stop', 'continue'].forEach((column) => {
+  for (const column of ['start', 'stop', 'continue']) {
     const textarea = document.getElementById(`${column}Input`);
     if (textarea) {
       textarea.addEventListener('keydown', (e) => {
@@ -572,8 +1022,12 @@ function setupTextareaHandlers() {
           addItem(column);
         }
       });
+
+      // Typing detection
+      textarea.addEventListener('input', () => handleTextareaInput(column));
+      textarea.addEventListener('blur', () => handleTextareaBlur(column));
     }
-  });
+  }
 }
 
 // Start

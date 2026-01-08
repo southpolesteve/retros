@@ -28,6 +28,17 @@ export interface Item {
   votes: number;
   votedByMe: boolean;
   createdAt: number;
+  groupId: string | null;
+}
+
+export interface ItemGroup {
+  id: string;
+  retroId: string;
+  column: Column;
+  title: string;
+  items: Item[];
+  votes: number; // aggregated from all items
+  createdAt: number;
 }
 
 // WebSocket attachment (persists across hibernation)
@@ -35,6 +46,14 @@ export interface WebSocketAttachment {
   visitorId: string;
   visitorName: string;
   isFacilitator: boolean;
+  typingIn: Column | null; // which column they're currently typing in
+}
+
+// Typing activity state per column
+export interface TypingActivity {
+  start: number;
+  stop: number;
+  continue: number;
 }
 
 // Client -> Server messages
@@ -45,7 +64,11 @@ export type ClientMessage =
   | { type: 'unvote'; itemId: string }
   | { type: 'set-phase'; phase: Phase }
   | { type: 'update-retro-name'; name: string }
-  | { type: 'delete-retro' };
+  | { type: 'delete-retro' }
+  | { type: 'group-items'; itemIds: string[]; title?: string }
+  | { type: 'ungroup'; groupId: string }
+  | { type: 'update-group-title'; groupId: string; title: string }
+  | { type: 'typing'; column: Column; isTyping: boolean };
 
 // Server -> Client messages
 export type ServerMessage =
@@ -54,6 +77,7 @@ export type ServerMessage =
       retro: Retro;
       participants: Participant[];
       items: Item[];
+      groups: ItemGroup[];
       visitorId: string;
       votesRemaining: number;
     }
@@ -67,9 +91,18 @@ export type ServerMessage =
       votedByMe: boolean;
       votesRemaining: number;
     }
-  | { type: 'phase-changed'; phase: Phase; items?: Item[] }
+  | {
+      type: 'phase-changed';
+      phase: Phase;
+      items?: Item[];
+      groups?: ItemGroup[];
+    }
   | { type: 'retro-name-updated'; name: string }
   | { type: 'retro-deleted' }
+  | { type: 'items-grouped'; group: ItemGroup }
+  | { type: 'items-ungrouped'; groupId: string; items: Item[] }
+  | { type: 'group-title-updated'; groupId: string; title: string }
+  | { type: 'typing-activity'; activity: TypingActivity }
   | { type: 'error'; message: string };
 
 // Environment bindings

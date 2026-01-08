@@ -4,10 +4,12 @@ import type {
   Column,
   Env,
   Item,
+  ItemGroup,
   Participant,
   Phase,
   Retro,
   ServerMessage,
+  TypingActivity,
   WebSocketAttachment,
 } from './types';
 
@@ -55,6 +57,14 @@ export class RetroRoom extends DurableObject<Env> {
   async webSocketClose(ws: WebSocket): Promise<void> {
     const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
     if (attachment) {
+      // Clear typing state and broadcast updated activity
+      if (attachment.typingIn) {
+        attachment.typingIn = null;
+        ws.serializeAttachment(attachment);
+        const activity = this.getTypingActivity();
+        this.broadcast({ type: 'typing-activity', activity }, ws);
+      }
+
       this.broadcast(
         { type: 'participant-left', visitorId: attachment.visitorId },
         ws,
@@ -91,6 +101,18 @@ export class RetroRoom extends DurableObject<Env> {
         break;
       case 'delete-retro':
         await this.handleDeleteRetro(ws);
+        break;
+      case 'group-items':
+        await this.handleGroupItems(ws, data.itemIds, data.title);
+        break;
+      case 'ungroup':
+        await this.handleUngroup(ws, data.groupId);
+        break;
+      case 'update-group-title':
+        await this.handleUpdateGroupTitle(ws, data.groupId, data.title);
+        break;
+      case 'typing':
+        this.handleTyping(ws, data.column, data.isTyping);
         break;
     }
   }
@@ -143,6 +165,7 @@ export class RetroRoom extends DurableObject<Env> {
       visitorId,
       visitorName: name,
       isFacilitator,
+      typingIn: null,
     };
     ws.serializeAttachment(attachment);
 
@@ -151,6 +174,7 @@ export class RetroRoom extends DurableObject<Env> {
 
     const participants = this.getParticipants();
     const items = await this.getItems(visitorId, currentRetro.phase);
+    const groups = await this.getGroups(visitorId, currentRetro.phase);
     const votesRemaining = await this.getVotesRemaining(visitorId);
 
     this.sendTo(ws, {
@@ -158,6 +182,7 @@ export class RetroRoom extends DurableObject<Env> {
       retro: currentRetro,
       participants,
       items,
+      groups,
       visitorId,
       votesRemaining,
     });
@@ -204,6 +229,7 @@ export class RetroRoom extends DurableObject<Env> {
       votes: 0,
       votedByMe: false,
       createdAt: Date.now(),
+      groupId: null,
     };
 
     await this.env.DB.prepare(
@@ -328,11 +354,28 @@ export class RetroRoom extends DurableObject<Env> {
       .bind(phase, this.retroId)
       .run();
 
+    // Clear all typing states when phase changes away from adding
+    if (phase !== 'adding') {
+      this.clearAllTypingStates();
+    }
+
     if (phase === 'voting' || phase === 'discussion' || phase === 'complete') {
       const items = await this.getItemsWithVotes();
-      this.broadcast({ type: 'phase-changed', phase, items });
+      const groups = await this.getGroupsWithVotes();
+      this.broadcast({ type: 'phase-changed', phase, items, groups });
     } else {
-      this.broadcast({ type: 'phase-changed', phase, items: [] });
+      this.broadcast({ type: 'phase-changed', phase, items: [], groups: [] });
+    }
+  }
+
+  private clearAllTypingStates(): void {
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment =
+        socket.deserializeAttachment() as WebSocketAttachment | null;
+      if (attachment?.typingIn) {
+        attachment.typingIn = null;
+        socket.serializeAttachment(attachment);
+      }
     }
   }
 
@@ -375,6 +418,9 @@ export class RetroRoom extends DurableObject<Env> {
     await this.env.DB.prepare('DELETE FROM items WHERE retro_id = ?')
       .bind(this.retroId)
       .run();
+    await this.env.DB.prepare('DELETE FROM item_groups WHERE retro_id = ?')
+      .bind(this.retroId)
+      .run();
     await this.env.DB.prepare('DELETE FROM retros WHERE id = ?')
       .bind(this.retroId)
       .run();
@@ -384,6 +430,226 @@ export class RetroRoom extends DurableObject<Env> {
     for (const socket of this.ctx.getWebSockets()) {
       socket.close(1000, 'Retro deleted');
     }
+  }
+
+  private async handleGroupItems(
+    ws: WebSocket,
+    itemIds: string[],
+    title?: string,
+  ): Promise<void> {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment || !attachment.isFacilitator) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can group items',
+      });
+      return;
+    }
+
+    const retro = await this.getRetro();
+    if (
+      !retro ||
+      (retro.phase !== 'voting' &&
+        retro.phase !== 'discussion' &&
+        retro.phase !== 'complete')
+    ) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot group items in current phase',
+      });
+      return;
+    }
+
+    if (itemIds.length < 2) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Need at least 2 items to group',
+      });
+      return;
+    }
+
+    // Get the first item to determine column type
+    const firstItem = await this.env.DB.prepare(
+      'SELECT column_type, group_id FROM items WHERE id = ? AND retro_id = ?',
+    )
+      .bind(itemIds[0], this.retroId)
+      .first<{ column_type: Column; group_id: string | null }>();
+
+    if (!firstItem) {
+      this.sendTo(ws, { type: 'error', message: 'Item not found' });
+      return;
+    }
+
+    // Check if we're adding to an existing group (when title is provided and first item has a group)
+    // In that case, reuse the existing group
+    let groupId: string;
+    let groupTitle: string;
+
+    if (firstItem.group_id && title) {
+      // Adding to existing group - reuse its ID
+      groupId = firstItem.group_id;
+      groupTitle = title;
+    } else {
+      // Creating a new group
+      groupId = generateId();
+      groupTitle = title || 'Grouped Items';
+      const createdAt = Date.now();
+
+      // Delete any empty groups that items may have belonged to
+      const oldGroupIds = new Set<string>();
+      for (const itemId of itemIds) {
+        const item = await this.env.DB.prepare(
+          'SELECT group_id FROM items WHERE id = ?',
+        )
+          .bind(itemId)
+          .first<{ group_id: string | null }>();
+        if (item?.group_id) {
+          oldGroupIds.add(item.group_id);
+        }
+      }
+
+      await this.env.DB.prepare(
+        'INSERT INTO item_groups (id, retro_id, column_type, title, created_at) VALUES (?, ?, ?, ?, ?)',
+      )
+        .bind(
+          groupId,
+          this.retroId,
+          firstItem.column_type,
+          groupTitle,
+          createdAt,
+        )
+        .run();
+
+      // Clean up old groups that will be empty after this operation
+      for (const oldGroupId of oldGroupIds) {
+        // Count remaining items in the old group (excluding items we're moving)
+        const remaining = await this.env.DB.prepare(
+          `SELECT COUNT(*) as count FROM items WHERE group_id = ? AND id NOT IN (${itemIds.map(() => '?').join(',')})`,
+        )
+          .bind(oldGroupId, ...itemIds)
+          .first<{ count: number }>();
+        if (remaining && remaining.count === 0) {
+          await this.env.DB.prepare('DELETE FROM item_groups WHERE id = ?')
+            .bind(oldGroupId)
+            .run();
+        }
+      }
+    }
+
+    // Update items to belong to this group
+    for (const itemId of itemIds) {
+      await this.env.DB.prepare(
+        'UPDATE items SET group_id = ? WHERE id = ? AND retro_id = ?',
+      )
+        .bind(groupId, itemId, this.retroId)
+        .run();
+    }
+
+    // Get the full group with items
+    const group = await this.getGroupById(groupId);
+    if (group) {
+      this.broadcast({ type: 'items-grouped', group });
+    }
+  }
+
+  private async handleUngroup(ws: WebSocket, groupId: string): Promise<void> {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment || !attachment.isFacilitator) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can ungroup items',
+      });
+      return;
+    }
+
+    const retro = await this.getRetro();
+    if (
+      !retro ||
+      (retro.phase !== 'voting' &&
+        retro.phase !== 'discussion' &&
+        retro.phase !== 'complete')
+    ) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot ungroup items in current phase',
+      });
+      return;
+    }
+
+    // Get items that will be ungrouped
+    const items = await this.getItemsByGroupId(groupId);
+
+    // Remove group_id from items
+    await this.env.DB.prepare(
+      'UPDATE items SET group_id = NULL WHERE group_id = ?',
+    )
+      .bind(groupId)
+      .run();
+
+    // Delete the group
+    await this.env.DB.prepare('DELETE FROM item_groups WHERE id = ?')
+      .bind(groupId)
+      .run();
+
+    this.broadcast({ type: 'items-ungrouped', groupId, items });
+  }
+
+  private async handleUpdateGroupTitle(
+    ws: WebSocket,
+    groupId: string,
+    title: string,
+  ): Promise<void> {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment || !attachment.isFacilitator) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Only facilitator can rename groups',
+      });
+      return;
+    }
+
+    const trimmedTitle = title.trim() || 'Grouped Items';
+    await this.env.DB.prepare(
+      'UPDATE item_groups SET title = ? WHERE id = ? AND retro_id = ?',
+    )
+      .bind(trimmedTitle, groupId, this.retroId)
+      .run();
+
+    this.broadcast({
+      type: 'group-title-updated',
+      groupId,
+      title: trimmedTitle,
+    });
+  }
+
+  private handleTyping(ws: WebSocket, column: Column, isTyping: boolean): void {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment) return;
+
+    // Update the attachment with typing state
+    const newTypingIn = isTyping ? column : null;
+    if (attachment.typingIn === newTypingIn) return; // No change
+
+    attachment.typingIn = newTypingIn;
+    ws.serializeAttachment(attachment);
+
+    // Broadcast updated typing activity to all clients
+    const activity = this.getTypingActivity();
+    this.broadcast({ type: 'typing-activity', activity });
+  }
+
+  private getTypingActivity(): TypingActivity {
+    const activity: TypingActivity = { start: 0, stop: 0, continue: 0 };
+
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment =
+        socket.deserializeAttachment() as WebSocketAttachment | null;
+      if (attachment?.typingIn) {
+        activity[attachment.typingIn]++;
+      }
+    }
+
+    return activity;
   }
 
   private async getRetro(): Promise<Retro | null> {
@@ -429,7 +695,7 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getItems(visitorId: string, phase: Phase): Promise<Item[]> {
     const results = await this.env.DB.prepare(
-      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC',
+      'SELECT id, retro_id, column_type, text, created_at, group_id FROM items WHERE retro_id = ? ORDER BY created_at ASC',
     )
       .bind(this.retroId)
       .all<{
@@ -438,6 +704,7 @@ export class RetroRoom extends DurableObject<Env> {
         column_type: Column;
         text: string;
         created_at: number;
+        group_id: string | null;
       }>();
 
     const items: Item[] = [];
@@ -454,6 +721,7 @@ export class RetroRoom extends DurableObject<Env> {
         votes: voteCount,
         votedByMe: myVoteCount > 0,
         createdAt: row.created_at,
+        groupId: row.group_id,
       });
     }
 
@@ -462,7 +730,7 @@ export class RetroRoom extends DurableObject<Env> {
 
   private async getItemsWithVotes(): Promise<Item[]> {
     const results = await this.env.DB.prepare(
-      'SELECT id, retro_id, column_type, text, created_at FROM items WHERE retro_id = ? ORDER BY created_at ASC',
+      'SELECT id, retro_id, column_type, text, created_at, group_id FROM items WHERE retro_id = ? ORDER BY created_at ASC',
     )
       .bind(this.retroId)
       .all<{
@@ -471,6 +739,7 @@ export class RetroRoom extends DurableObject<Env> {
         column_type: Column;
         text: string;
         created_at: number;
+        group_id: string | null;
       }>();
 
     const items: Item[] = [];
@@ -485,6 +754,7 @@ export class RetroRoom extends DurableObject<Env> {
         votes: voteCount,
         votedByMe: false,
         createdAt: row.created_at,
+        groupId: row.group_id,
       });
     }
 
@@ -527,6 +797,177 @@ export class RetroRoom extends DurableObject<Env> {
   private async getVotesRemaining(visitorId: string): Promise<number> {
     const used = await this.getVotesUsed(visitorId);
     return MAX_VOTES - used;
+  }
+
+  private async getGroups(
+    visitorId: string,
+    phase: Phase,
+  ): Promise<ItemGroup[]> {
+    const results = await this.env.DB.prepare(
+      'SELECT id, retro_id, column_type, title, created_at FROM item_groups WHERE retro_id = ? ORDER BY created_at ASC',
+    )
+      .bind(this.retroId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        title: string;
+        created_at: number;
+      }>();
+
+    const groups: ItemGroup[] = [];
+    for (const row of results.results || []) {
+      const items = await this.getItemsByGroupId(row.id, visitorId, phase);
+      const votes = items.reduce((sum, item) => sum + item.votes, 0);
+
+      groups.push({
+        id: row.id,
+        retroId: row.retro_id,
+        column: row.column_type,
+        title: row.title,
+        items,
+        votes,
+        createdAt: row.created_at,
+      });
+    }
+
+    return groups;
+  }
+
+  private async getGroupsWithVotes(): Promise<ItemGroup[]> {
+    const results = await this.env.DB.prepare(
+      'SELECT id, retro_id, column_type, title, created_at FROM item_groups WHERE retro_id = ? ORDER BY created_at ASC',
+    )
+      .bind(this.retroId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        title: string;
+        created_at: number;
+      }>();
+
+    const groups: ItemGroup[] = [];
+    for (const row of results.results || []) {
+      const items = await this.getItemsByGroupIdWithVotes(row.id);
+      const votes = items.reduce((sum, item) => sum + item.votes, 0);
+
+      groups.push({
+        id: row.id,
+        retroId: row.retro_id,
+        column: row.column_type,
+        title: row.title,
+        items,
+        votes,
+        createdAt: row.created_at,
+      });
+    }
+
+    groups.sort((a, b) => b.votes - a.votes);
+    return groups;
+  }
+
+  private async getGroupById(groupId: string): Promise<ItemGroup | null> {
+    const row = await this.env.DB.prepare(
+      'SELECT id, retro_id, column_type, title, created_at FROM item_groups WHERE id = ?',
+    )
+      .bind(groupId)
+      .first<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        title: string;
+        created_at: number;
+      }>();
+
+    if (!row) return null;
+
+    const items = await this.getItemsByGroupIdWithVotes(groupId);
+    const votes = items.reduce((sum, item) => sum + item.votes, 0);
+
+    return {
+      id: row.id,
+      retroId: row.retro_id,
+      column: row.column_type,
+      title: row.title,
+      items,
+      votes,
+      createdAt: row.created_at,
+    };
+  }
+
+  private async getItemsByGroupId(
+    groupId: string,
+    visitorId?: string,
+    phase?: Phase,
+  ): Promise<Item[]> {
+    const results = await this.env.DB.prepare(
+      'SELECT id, retro_id, column_type, text, created_at, group_id FROM items WHERE group_id = ? ORDER BY created_at ASC',
+    )
+      .bind(groupId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        text: string;
+        created_at: number;
+        group_id: string | null;
+      }>();
+
+    const items: Item[] = [];
+    for (const row of results.results || []) {
+      const voteCount =
+        phase === 'voting' ? 0 : await this.getVoteCount(row.id);
+      const myVoteCount = visitorId
+        ? await this.getMyVoteCount(row.id, visitorId)
+        : 0;
+
+      items.push({
+        id: row.id,
+        retroId: row.retro_id,
+        column: row.column_type,
+        text: row.text,
+        votes: voteCount,
+        votedByMe: myVoteCount > 0,
+        createdAt: row.created_at,
+        groupId: row.group_id,
+      });
+    }
+
+    return items;
+  }
+
+  private async getItemsByGroupIdWithVotes(groupId: string): Promise<Item[]> {
+    const results = await this.env.DB.prepare(
+      'SELECT id, retro_id, column_type, text, created_at, group_id FROM items WHERE group_id = ? ORDER BY created_at ASC',
+    )
+      .bind(groupId)
+      .all<{
+        id: string;
+        retro_id: string;
+        column_type: Column;
+        text: string;
+        created_at: number;
+        group_id: string | null;
+      }>();
+
+    const items: Item[] = [];
+    for (const row of results.results || []) {
+      const voteCount = await this.getVoteCount(row.id);
+
+      items.push({
+        id: row.id,
+        retroId: row.retro_id,
+        column: row.column_type,
+        text: row.text,
+        votes: voteCount,
+        votedByMe: false,
+        createdAt: row.created_at,
+        groupId: row.group_id,
+      });
+    }
+
+    return items;
   }
 
   private sendTo(ws: WebSocket, message: ServerMessage): void {

@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS items (
   column_type TEXT NOT NULL,
   text TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (retro_id) REFERENCES retros(id) ON DELETE CASCADE
+  group_id TEXT,
+  FOREIGN KEY (retro_id) REFERENCES retros(id) ON DELETE CASCADE,
+  FOREIGN KEY (group_id) REFERENCES item_groups(id) ON DELETE SET NULL
 );
 
 -- Votes table
@@ -27,7 +29,19 @@ CREATE TABLE IF NOT EXISTS votes (
   UNIQUE(item_id, participant_id, id)
 );
 
+-- Item groups table (for merging similar items)
+CREATE TABLE IF NOT EXISTS item_groups (
+  id TEXT PRIMARY KEY,
+  retro_id TEXT NOT NULL,
+  column_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (retro_id) REFERENCES retros(id) ON DELETE CASCADE
+);
+
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_items_retro ON items(retro_id);
+CREATE INDEX IF NOT EXISTS idx_items_group ON items(group_id);
 CREATE INDEX IF NOT EXISTS idx_votes_item ON votes(item_id);
 CREATE INDEX IF NOT EXISTS idx_votes_participant ON votes(participant_id);
+CREATE INDEX IF NOT EXISTS idx_item_groups_retro ON item_groups(retro_id);

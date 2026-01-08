@@ -647,13 +647,75 @@ p {
 
 .item-count {
   text-align: center;
-  padding: 1.5rem 1rem;
+  padding: 1rem;
   color: var(--text-muted);
   font-size: 0.875rem;
   font-style: italic;
   background: var(--bg-tertiary);
   border-radius: var(--radius);
   border: 1px dashed var(--border-color);
+  margin-bottom: 0.5rem;
+}
+
+/* Typing Indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  color: var(--accent-orange);
+  font-size: 0.8125rem;
+  background: var(--accent-orange-light);
+  border-radius: var(--radius);
+  border: 1px solid var(--accent-orange);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.typing-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-orange);
+  border-radius: 50%;
+  animation: bounce 1.4s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
 }
 
 .item-text {
@@ -687,6 +749,152 @@ p {
   margin-top: 0.75rem;
   display: flex;
   gap: 0.5rem;
+}
+
+/* Draggable Items */
+.item.draggable,
+.group-item.draggable {
+  cursor: grab;
+}
+
+.item.draggable:active,
+.group-item.draggable:active {
+  cursor: grabbing;
+}
+
+.item.dragging,
+.group-item.dragging {
+  opacity: 0.5;
+  border: 2px dashed var(--accent-orange);
+}
+
+.item.drop-target,
+.item-group.drop-target {
+  border: 2px solid var(--accent-orange);
+  background: var(--accent-orange-light);
+  box-shadow: 0 0 0 3px var(--accent-orange-light);
+}
+
+/* Item Groups */
+.item-group {
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.item-group:hover {
+  border-color: var(--text-muted);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.group-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--accent-orange);
+  flex: 1;
+}
+
+.group-title.editable {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem;
+  border-radius: var(--radius);
+  transition: background-color 0.2s;
+}
+
+.group-title.editable:hover {
+  background: var(--bg-tertiary);
+}
+
+.group-title-input {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent-orange);
+  background: var(--bg-tertiary);
+  border: 2px solid var(--accent-orange);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.5rem;
+  flex: 1;
+  min-width: 100px;
+}
+
+.group-votes {
+  font-size: 0.875rem;
+  color: var(--accent-orange);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.group-votes::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-orange);
+  border-radius: 50%;
+}
+
+.btn-ungroup {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.btn-ungroup:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--text-muted);
+}
+
+.group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.group-item {
+  background: var(--bg-secondary);
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  transition:
+    border-color 0.2s,
+    opacity 0.2s;
+}
+
+.group-item:hover {
+  border-color: var(--border-color);
+}
+
+.group-item .item-text {
+  font-size: 0.875rem;
+}
+
+.group-item .item-vote-controls {
+  margin-top: 0.5rem;
+}
+
+.group-item .btn-vote {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
 }
 
 /* Add Item Form */
