@@ -323,4 +323,102 @@ test.describe('Grouping Feature', () => {
     await expect(group).toContainText('Item A');
     await expect(group).toContainText('Item B');
   });
+
+  test('can vote on a group as a whole', async ({ page }) => {
+    const itemA = page.locator('#startItems .item', { hasText: 'Item A' });
+    const itemB = page.locator('#startItems .item', { hasText: 'Item B' });
+
+    // Group A and B
+    await itemA.dragTo(itemB);
+    await expect(page.locator('#startItems .item-group')).toHaveCount(1);
+
+    // Advance to Voting
+    await page.click('#nextPhaseBtn');
+    await expect(page.locator('#phaseLabel')).toHaveText('Voting');
+
+    // Group should have a single vote button in the header, not per-item buttons
+    const group = page.locator('#startItems .item-group');
+    const groupVoteBtn = group.locator('.group-header .btn-vote');
+    await expect(groupVoteBtn).toHaveCount(1);
+    await expect(groupVoteBtn).toHaveText('Vote');
+
+    // Items inside the group should NOT have vote buttons
+    const itemVoteBtns = group.locator('.group-item .btn-vote');
+    await expect(itemVoteBtns).toHaveCount(0);
+
+    // Vote on the group
+    await groupVoteBtn.click();
+    await expect(groupVoteBtn).toHaveText('Voted');
+    await expect(groupVoteBtn).toHaveClass(/voted/);
+
+    // Votes remaining should decrease
+    await expect(page.locator('#votesCount')).toHaveText('2');
+  });
+
+  test('can unvote a group', async ({ page }) => {
+    const itemA = page.locator('#startItems .item', { hasText: 'Item A' });
+    const itemB = page.locator('#startItems .item', { hasText: 'Item B' });
+
+    // Group A and B
+    await itemA.dragTo(itemB);
+
+    // Advance to Voting
+    await page.click('#nextPhaseBtn');
+    await expect(page.locator('#phaseLabel')).toHaveText('Voting');
+
+    const groupVoteBtn = page.locator(
+      '#startItems .item-group .group-header .btn-vote',
+    );
+
+    // Vote on the group
+    await groupVoteBtn.click();
+    await expect(groupVoteBtn).toHaveText('Voted');
+    await expect(page.locator('#votesCount')).toHaveText('2');
+
+    // Unvote
+    await groupVoteBtn.click();
+    await expect(groupVoteBtn).toHaveText('Vote');
+    await expect(groupVoteBtn).not.toHaveClass(/voted/);
+    await expect(page.locator('#votesCount')).toHaveText('3');
+  });
+
+  test('group votes are counted separately from item votes', async ({
+    page,
+  }) => {
+    const itemA = page.locator('#startItems .item', { hasText: 'Item A' });
+    const itemB = page.locator('#startItems .item', { hasText: 'Item B' });
+
+    // Group A and B
+    await itemA.dragTo(itemB);
+
+    // Advance to Voting
+    await page.click('#nextPhaseBtn');
+    await expect(page.locator('#phaseLabel')).toHaveText('Voting');
+
+    // Vote on the group
+    const groupVoteBtn = page.locator(
+      '#startItems .item-group .group-header .btn-vote',
+    );
+    await groupVoteBtn.click();
+    await expect(page.locator('#votesCount')).toHaveText('2');
+
+    // Vote on the ungrouped item C
+    const itemC = page.locator('#startItems > .item', { hasText: 'Item C' });
+    await itemC.locator('.btn-vote').click();
+    await expect(page.locator('#votesCount')).toHaveText('1');
+
+    // Advance to Discussion to see vote counts
+    await page.click('#nextPhaseBtn');
+    await expect(page.locator('#phaseLabel')).toHaveText('Discussion');
+
+    // Group should show 1 vote
+    await expect(
+      page.locator('#startItems .item-group .group-votes'),
+    ).toHaveText('1 vote');
+
+    // Item C should show 1 vote
+    await expect(page.locator('#startItems > .item .item-votes')).toHaveText(
+      '1 vote',
+    );
+  });
 });

@@ -198,6 +198,9 @@ function handleMessage(message) {
     case 'typing-activity':
       handleTypingActivity(message.activity);
       break;
+    case 'group-vote-updated':
+      handleGroupVoteUpdated(message);
+      break;
     case 'retro-deleted':
       clearSession();
       alert('This retro has been deleted.');
@@ -275,6 +278,17 @@ function handleVoteUpdated(message) {
   state.votesRemaining = message.votesRemaining;
   updateVotesRemaining();
   updateItemVoteUI(message.itemId);
+}
+
+function handleGroupVoteUpdated(message) {
+  const group = state.groups.find((g) => g.id === message.groupId);
+  if (group) {
+    group.votes = message.votes;
+    group.votedByMe = message.votedByMe;
+  }
+  state.votesRemaining = message.votesRemaining;
+  updateVotesRemaining();
+  updateGroupVoteUI(message.groupId);
 }
 
 function handlePhaseChanged(phase, items, groups) {
@@ -608,6 +622,7 @@ function renderGroup(group) {
   groupEl.id = `group-${group.id}`;
 
   const showVotes = phase === 'discussion' || phase === 'complete';
+  const canVote = phase === 'voting';
   const canDrag = state.isFacilitator && phase === 'grouping';
   const canEditGroup = state.isFacilitator && phase === 'grouping';
 
@@ -630,27 +645,23 @@ function renderGroup(group) {
     ? `<button class="btn btn-small btn-ungroup" onclick="ungroupItems('${group.id}')">Ungroup</button>`
     : '';
 
+  // Vote button for the entire group (in voting phase)
+  const voteBtn = canVote
+    ? `<button class="btn btn-vote ${group.votedByMe ? 'voted' : ''}" onclick="toggleGroupVote('${group.id}')">
+        ${group.votedByMe ? 'Voted' : 'Vote'}
+       </button>`
+    : '';
+
   let itemsHtml = '';
   for (const item of group.items) {
-    const canVote = phase === 'voting';
     const itemDraggable = canDrag ? 'draggable="true"' : '';
     const itemDraggableClass = canDrag ? 'draggable' : '';
 
+    // Items inside groups don't have individual vote buttons - vote on the group instead
     itemsHtml += `
       <div class="group-item ${itemDraggableClass}" id="item-${item.id}" ${itemDraggable}
            ${canDrag ? `ondragstart="handleDragStart(event, '${item.id}')" ondragend="handleDragEnd(event)"` : ''}>
         <div class="item-text">${escapeHtml(item.text)}</div>
-        ${
-          canVote
-            ? `
-          <div class="item-vote-controls">
-            <button class="btn btn-vote ${item.votedByMe ? 'voted' : ''}" onclick="toggleVote('${item.id}')">
-              ${item.votedByMe ? 'Voted' : 'Vote'}
-            </button>
-          </div>
-        `
-            : ''
-        }
       </div>
     `;
   }
@@ -659,6 +670,7 @@ function renderGroup(group) {
     <div class="group-header">
       ${titleHtml}
       ${showVotes ? `<span class="group-votes">${group.votes} vote${group.votes !== 1 ? 's' : ''}</span>` : ''}
+      ${voteBtn}
       ${ungroupBtn}
     </div>
     <div class="group-items">
@@ -846,6 +858,20 @@ function updateItemVoteUI(itemId) {
   }
 }
 
+function updateGroupVoteUI(groupId) {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) return;
+
+  const groupEl = document.getElementById(`group-${groupId}`);
+  if (!groupEl) return;
+
+  const voteBtn = groupEl.querySelector('.group-header .btn-vote');
+  if (voteBtn) {
+    voteBtn.className = `btn btn-vote ${group.votedByMe ? 'voted' : ''}`;
+    voteBtn.textContent = group.votedByMe ? 'Voted' : 'Vote';
+  }
+}
+
 function updateFacilitatorControls() {
   if (!state.isFacilitator) {
     facilitatorControls.classList.add('hidden');
@@ -930,6 +956,21 @@ function toggleVote(itemId) {
   }
 }
 
+function toggleGroupVote(groupId) {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) return;
+
+  if (group.votedByMe) {
+    ws.send(JSON.stringify({ type: 'unvote-group', groupId }));
+  } else {
+    if (state.votesRemaining <= 0) {
+      alert('No votes remaining! Remove a vote from another item first.');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'vote-group', groupId }));
+  }
+}
+
 function handleNextPhase() {
   const nextPhase = nextPhaseBtn.dataset.nextPhase;
   if (nextPhase) {
@@ -965,6 +1006,7 @@ function escapeHtml(text) {
 // Make functions available globally for onclick handlers
 window.addItem = addItem;
 window.toggleVote = toggleVote;
+window.toggleGroupVote = toggleGroupVote;
 window.ungroupItems = ungroupItems;
 window.startEditingGroupTitle = startEditingGroupTitle;
 window.handleDragStart = handleDragStart;

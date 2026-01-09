@@ -120,6 +120,12 @@ export class RetroRoom extends DurableObject<Env> {
       case 'update-group-title':
         await this.handleUpdateGroupTitle(ws, data.groupId, data.title);
         break;
+      case 'vote-group':
+        await this.handleVoteGroup(ws, data.groupId);
+        break;
+      case 'unvote-group':
+        await this.handleUnvoteGroup(ws, data.groupId);
+        break;
       case 'typing':
         this.handleTyping(ws, data.column, data.isTyping);
         break;
@@ -442,6 +448,11 @@ export class RetroRoom extends DurableObject<Env> {
     )
       .bind(this.retroId)
       .run();
+    await this.env.DB.prepare(
+      'DELETE FROM group_votes WHERE group_id IN (SELECT id FROM item_groups WHERE retro_id = ?)',
+    )
+      .bind(this.retroId)
+      .run();
     await this.env.DB.prepare('DELETE FROM items WHERE retro_id = ?')
       .bind(this.retroId)
       .run();
@@ -655,6 +666,98 @@ export class RetroRoom extends DurableObject<Env> {
     this.broadcast({ type: 'typing-activity', activity });
   }
 
+  private async handleVoteGroup(ws: WebSocket, groupId: string): Promise<void> {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment) {
+      this.sendTo(ws, { type: 'error', message: 'Not joined' });
+      return;
+    }
+
+    const retro = await this.getRetro();
+    if (!retro || retro.phase !== 'voting') {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot vote in current phase',
+      });
+      return;
+    }
+
+    const votesUsed = await this.getVotesUsed(attachment.visitorId);
+    if (votesUsed >= MAX_VOTES) {
+      this.sendTo(ws, { type: 'error', message: 'No votes remaining' });
+      return;
+    }
+
+    // Check if already voted for this group
+    const existingVote = await this.env.DB.prepare(
+      'SELECT id FROM group_votes WHERE group_id = ? AND participant_id = ?',
+    )
+      .bind(groupId, attachment.visitorId)
+      .first();
+    if (existingVote) {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Already voted for this group',
+      });
+      return;
+    }
+
+    const voteId = generateId();
+    await this.env.DB.prepare(
+      'INSERT INTO group_votes (id, group_id, participant_id, created_at) VALUES (?, ?, ?, ?)',
+    )
+      .bind(voteId, groupId, attachment.visitorId, Date.now())
+      .run();
+
+    const voteCount = await this.getGroupVoteCount(groupId);
+    const votesRemaining = MAX_VOTES - votesUsed - 1;
+
+    this.sendTo(ws, {
+      type: 'group-vote-updated',
+      groupId,
+      votes: voteCount,
+      votedByMe: true,
+      votesRemaining,
+    });
+  }
+
+  private async handleUnvoteGroup(
+    ws: WebSocket,
+    groupId: string,
+  ): Promise<void> {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+    if (!attachment) {
+      this.sendTo(ws, { type: 'error', message: 'Not joined' });
+      return;
+    }
+
+    const retro = await this.getRetro();
+    if (!retro || retro.phase !== 'voting') {
+      this.sendTo(ws, {
+        type: 'error',
+        message: 'Cannot unvote in current phase',
+      });
+      return;
+    }
+
+    await this.env.DB.prepare(
+      'DELETE FROM group_votes WHERE group_id = ? AND participant_id = ?',
+    )
+      .bind(groupId, attachment.visitorId)
+      .run();
+
+    const voteCount = await this.getGroupVoteCount(groupId);
+    const votesUsed = await this.getVotesUsed(attachment.visitorId);
+
+    this.sendTo(ws, {
+      type: 'group-vote-updated',
+      groupId,
+      votes: voteCount,
+      votedByMe: false,
+      votesRemaining: MAX_VOTES - votesUsed,
+    });
+  }
+
   private getTypingActivity(): TypingActivity {
     const activity: TypingActivity = { start: 0, stop: 0, continue: 0 };
 
@@ -801,14 +904,46 @@ export class RetroRoom extends DurableObject<Env> {
   }
 
   private async getVotesUsed(visitorId: string): Promise<number> {
-    const result = await this.env.DB.prepare(
+    // Count item votes
+    const itemVotes = await this.env.DB.prepare(
       `SELECT COUNT(*) as count FROM votes v
        JOIN items i ON v.item_id = i.id
        WHERE v.participant_id = ? AND i.retro_id = ?`,
     )
       .bind(visitorId, this.retroId)
       .first<{ count: number }>();
+
+    // Count group votes
+    const groupVotes = await this.env.DB.prepare(
+      `SELECT COUNT(*) as count FROM group_votes gv
+       JOIN item_groups g ON gv.group_id = g.id
+       WHERE gv.participant_id = ? AND g.retro_id = ?`,
+    )
+      .bind(visitorId, this.retroId)
+      .first<{ count: number }>();
+
+    return (itemVotes?.count || 0) + (groupVotes?.count || 0);
+  }
+
+  private async getGroupVoteCount(groupId: string): Promise<number> {
+    const result = await this.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM group_votes WHERE group_id = ?',
+    )
+      .bind(groupId)
+      .first<{ count: number }>();
     return result?.count || 0;
+  }
+
+  private async getMyGroupVoteCount(
+    groupId: string,
+    visitorId: string,
+  ): Promise<boolean> {
+    const result = await this.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM group_votes WHERE group_id = ? AND participant_id = ?',
+    )
+      .bind(groupId, visitorId)
+      .first<{ count: number }>();
+    return (result?.count || 0) > 0;
   }
 
   private async getVotesRemaining(visitorId: string): Promise<number> {
@@ -843,7 +978,10 @@ export class RetroRoom extends DurableObject<Env> {
           .run();
         continue;
       }
-      const votes = items.reduce((sum, item) => sum + item.votes, 0);
+      // Group votes are stored separately, not per-item
+      const votes =
+        phase === 'voting' ? 0 : await this.getGroupVoteCount(row.id);
+      const votedByMe = await this.getMyGroupVoteCount(row.id, visitorId);
 
       groups.push({
         id: row.id,
@@ -852,6 +990,7 @@ export class RetroRoom extends DurableObject<Env> {
         title: row.title,
         items,
         votes,
+        votedByMe,
         createdAt: row.created_at,
       });
     }
@@ -883,7 +1022,8 @@ export class RetroRoom extends DurableObject<Env> {
           .run();
         continue;
       }
-      const votes = items.reduce((sum, item) => sum + item.votes, 0);
+      // Group votes are stored separately
+      const votes = await this.getGroupVoteCount(row.id);
 
       groups.push({
         id: row.id,
@@ -892,6 +1032,7 @@ export class RetroRoom extends DurableObject<Env> {
         title: row.title,
         items,
         votes,
+        votedByMe: false, // Will be set per-user in state message
         createdAt: row.created_at,
       });
     }
@@ -916,7 +1057,8 @@ export class RetroRoom extends DurableObject<Env> {
     if (!row) return null;
 
     const items = await this.getItemsByGroupIdWithVotes(groupId);
-    const votes = items.reduce((sum, item) => sum + item.votes, 0);
+    // Group votes are stored separately (not per-item)
+    const votes = await this.getGroupVoteCount(groupId);
 
     return {
       id: row.id,
@@ -925,6 +1067,7 @@ export class RetroRoom extends DurableObject<Env> {
       title: row.title,
       items,
       votes,
+      votedByMe: false, // This is used for broadcasting, individual clients will track their own state
       createdAt: row.created_at,
     };
   }

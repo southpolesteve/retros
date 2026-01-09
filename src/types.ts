@@ -44,6 +44,7 @@ export interface ItemGroup {
   title: string;
   items: Item[];
   votes: number; // aggregated from all items
+  votedByMe: boolean; // true if current user has voted for this group
   createdAt: number;
 }
 
@@ -69,6 +70,8 @@ export type ClientMessage =
   | { type: 'add-item'; column: Column; text: string }
   | { type: 'vote'; itemId: string }
   | { type: 'unvote'; itemId: string }
+  | { type: 'vote-group'; groupId: string }
+  | { type: 'unvote-group'; groupId: string }
   | { type: 'set-phase'; phase: Phase }
   | { type: 'update-retro-name'; name: string }
   | { type: 'delete-retro' }
@@ -109,6 +112,13 @@ export type ServerMessage =
   | { type: 'items-grouped'; group: ItemGroup }
   | { type: 'items-ungrouped'; groupId: string; items: Item[] }
   | { type: 'group-title-updated'; groupId: string; title: string }
+  | {
+      type: 'group-vote-updated';
+      groupId: string;
+      votes: number;
+      votedByMe: boolean;
+      votesRemaining: number;
+    }
   | { type: 'typing-activity'; activity: TypingActivity }
   | { type: 'error'; message: string };
 
