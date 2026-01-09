@@ -835,6 +835,14 @@ export class RetroRoom extends DurableObject<Env> {
     const groups: ItemGroup[] = [];
     for (const row of results.results || []) {
       const items = await this.getItemsByGroupId(row.id, visitorId, phase);
+      // Skip empty groups (they shouldn't exist but filter just in case)
+      if (items.length === 0) {
+        // Clean up the empty group from database
+        await this.env.DB.prepare('DELETE FROM item_groups WHERE id = ?')
+          .bind(row.id)
+          .run();
+        continue;
+      }
       const votes = items.reduce((sum, item) => sum + item.votes, 0);
 
       groups.push({
@@ -867,6 +875,14 @@ export class RetroRoom extends DurableObject<Env> {
     const groups: ItemGroup[] = [];
     for (const row of results.results || []) {
       const items = await this.getItemsByGroupIdWithVotes(row.id);
+      // Skip empty groups (they shouldn't exist but filter just in case)
+      if (items.length === 0) {
+        // Clean up the empty group from database
+        await this.env.DB.prepare('DELETE FROM item_groups WHERE id = ?')
+          .bind(row.id)
+          .run();
+        continue;
+      }
       const votes = items.reduce((sum, item) => sum + item.votes, 0);
 
       groups.push({
