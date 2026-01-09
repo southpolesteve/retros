@@ -127,4 +127,5 @@ export interface Env {
   DB: D1Database;
   RETRO_ROOM: DurableObjectNamespace;
   ASSETS: Fetcher;
+  COMMIT_SHA: string;
 }

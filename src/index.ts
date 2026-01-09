@@ -3,6 +3,8 @@ import type { Env } from './types';
 // Re-export the Durable Object
 export { RetroRoom } from './retro-room';
 
+const GITHUB_REPO = 'https://github.com/southpolesteve/retros';
+
 function generateRetroId(): string {
   // Generate a short, readable ID
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -79,17 +81,48 @@ export default {
       return new Response('Not found', { status: 404 });
     }
 
-    // For retro pages, serve retro.html
+    // For retro pages, serve retro.html with commit footer
     if (path.startsWith('/retro/') && !path.includes('.')) {
-      return env.ASSETS.fetch(new URL('/retro.html', request.url), request);
+      const response = await env.ASSETS.fetch(
+        new URL('/retro.html', request.url),
+        request,
+      );
+      return injectCommitFooter(response, env.COMMIT_SHA);
     }
 
-    // Home page
+    // Home page with commit footer
     if (path === '/') {
-      return env.ASSETS.fetch(new URL('/index.html', request.url), request);
+      const response = await env.ASSETS.fetch(
+        new URL('/index.html', request.url),
+        request,
+      );
+      return injectCommitFooter(response, env.COMMIT_SHA);
     }
 
     // Serve static assets
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+async function injectCommitFooter(
+  response: Response,
+  commitSha: string,
+): Promise<Response> {
+  const html = await response.text();
+  const shortSha = commitSha.slice(0, 7);
+  const commitUrl =
+    commitSha === 'local' ? GITHUB_REPO : `${GITHUB_REPO}/commit/${commitSha}`;
+
+  const footer = `
+  <footer class="commit-footer">
+    <a href="${commitUrl}" target="_blank" rel="noopener">${shortSha}</a>
+  </footer>
+</body>`;
+
+  const modifiedHtml = html.replace('</body>', footer);
+
+  return new Response(modifiedHtml, {
+    status: response.status,
+    headers: response.headers,
+  });
+}

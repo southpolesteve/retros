@@ -998,3 +998,32 @@ p {
     align-items: stretch;
   }
 }
+
+/* Commit Footer */
+.commit-footer {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: "SF Mono", Monaco, "Courier New", monospace;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color);
+  border-left: 1px solid var(--border-color);
+  border-top-left-radius: var(--radius);
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.commit-footer:hover {
+  opacity: 1;
+}
+
+.commit-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.commit-footer a:hover {
+  color: var(--accent-orange);
+}

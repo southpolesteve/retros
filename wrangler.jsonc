@@ -3,6 +3,10 @@
   "name": "retros",
   "main": "src/index.ts",
   "compatibility_date": "2025-01-06",
+  // Environment variables
+  "vars": {
+    "COMMIT_SHA": "local"
+  },
   // Serve static assets from /public
   "assets": {
     "directory": "./public",
